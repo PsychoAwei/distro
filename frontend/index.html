@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飞机订票系统</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <span class="nav-brand">✈️ 飞机订票系统</span>
+        <div class="nav-links" id="navLinks">
+            <!-- JS 动态渲染 -->
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <div class="main-content">
+        <!-- 搜索栏 -->
+        <div class="search-bar">
+            <input type="text" id="searchOrigin" placeholder="出发城市">
+            <input type="text" id="searchDest" placeholder="到达城市">
+            <input type="date" id="searchDate">
+            <button class="btn btn-primary" onclick="searchFlights()">🔍 搜索航班</button>
+            <button class="btn btn-outline" onclick="resetSearch()">重置</button>
+        </div>
+
+        <!-- 航班列表 -->
+        <div class="flights-card">
+            <h3>📋 航班列表</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>航班号</th>
+                        <th>出发</th>
+                        <th>到达</th>
+                        <th>出发时间</th>
+                        <th>到达时间</th>
+                        <th>票价</th>
+                        <th>余票</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="flightsBody">
+                    <!-- JS 动态渲染 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 预订模态框 -->
+    <div class="modal-overlay" id="bookingOverlay">
+        <div class="modal">
+            <button class="modal-close" onclick="closeBooking()">&times;</button>
+            <h3>✈️ 预订机票</h3>
+            <div id="bookingFlightInfo" style="margin-bottom:16px;font-size:14px;color:var(--text-secondary)"></div>
+            <form id="bookingForm">
+                <div class="form-group">
+                    <label for="passengerName">乘客姓名</label>
+                    <input type="text" id="passengerName" placeholder="请输入乘客姓名" required>
+                </div>
+                <div class="form-group">
+                    <label for="passengerPhone">联系电话</label>
+                    <input type="text" id="passengerPhone" placeholder="请输入联系电话" required>
+                </div>
+                <div class="form-group">
+                    <label for="seatCount">订票数量</label>
+                    <input type="number" id="seatCount" min="1" max="10" value="1" required>
+                </div>
+                <div class="form-error" id="bookingError"></div>
+                <button type="submit" class="btn btn-primary">确认预订</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 预订结果模态框 -->
+    <div class="modal-overlay" id="resultOverlay">
+        <div class="modal">
+            <div class="booking-result" id="bookingResult">
+                <!-- JS 动态渲染 -->
+            </div>
+            <button class="btn btn-primary" onclick="closeResult()">确 定</button>
+        </div>
+    </div>
+
+    <script>
+    // ===== 全局状态 =====
+    let currentFlightId = null;
+    let currentFlightPrice = null;
+
+    // ===== 初始化 =====
+    document.addEventListener('DOMContentLoaded', function() {
+        renderNav();
+        searchFlights();
+    });
+
+    // ===== 导航栏 =====
+    function renderNav() {
+        var nav = document.getElementById('navLinks');
+        var token = localStorage.getItem('token');
+        var username = localStorage.getItem('username');
+
+        if (token) {
+            nav.innerHTML =
+                '<span class="nav-user-info">👤 ' + escapeHtml(username) + '</span>' +
+                '<button class="btn btn-outline btn-sm" onclick="logout()">退出</button>';
+        } else {
+            nav.innerHTML =
+                '<a href="/login"><button class="btn btn-outline btn-sm">登录</button></a>' +
+                '<a href="/register"><button class="btn btn-primary btn-sm">注册</button></a>';
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('token');
+        localStorage.removeItem('username');
+        renderNav();
+        searchFlights();
+        showToast('已退出登录', 'success');
+    }
+
+    // ===== 航班搜索 =====
+    async function searchFlights() {
+        var origin = document.getElementById('searchOrigin').value.trim();
+        var dest = document.getElementById('searchDest').value.trim();
+        var date = document.getElementById('searchDate').value;
+
+        var params = new URLSearchParams();
+        if (origin) params.set('origin', origin);
+        if (dest) params.set('destination', dest);
+        if (date) params.set('date', date);
+
+        try {
+            var resp = await fetch('/api/flights?' + params.toString());
+            var data = await resp.json();
+            renderFlights(data.flights || []);
+        } catch (err) {
+            showToast('加载航班失败', 'error');
+        }
+    }
+
+    function resetSearch() {
+        document.getElementById('searchOrigin').value = '';
+        document.getElementById('searchDest').value = '';
+        document.getElementById('searchDate').value = '';
+        searchFlights();
+    }
+
+    function renderFlights(flights) {
+        var body = document.getElementById('flightsBody');
+
+        if (flights.length === 0) {
+            body.innerHTML = '<tr class="empty-row"><td colspan="8">😕 没有找到符合条件的航班</td></tr>';
+            return;
+        }
+
+        body.innerHTML = flights.map(function(f) {
+            var seatsClass = f.available_seats <= 10 ? 'seats-low' : '';
+            return '<tr>' +
+                '<td><strong>' + escapeHtml(f.flight_no) + '</strong></td>' +
+                '<td>' + escapeHtml(f.origin) + '</td>' +
+                '<td>' + escapeHtml(f.destination) + '</td>' +
+                '<td>' + formatTime(f.departure_time) + '</td>' +
+                '<td>' + formatTime(f.arrival_time) + '</td>' +
+                '<td class="price">¥' + f.price.toFixed(0) + '</td>' +
+                '<td class="' + seatsClass + '">' + f.available_seats + '</td>' +
+                '<td><button class="btn btn-primary btn-sm" onclick="openBooking(' + f.id + ', \'' + escapeHtml(f.flight_no) + '\', ' + f.price + ', ' + f.available_seats + ')">预订</button></td>' +
+                '</tr>';
+        }).join('');
+    }
+
+    // ===== 预订流程 =====
+    function openBooking(flightId, flightNo, price, available) {
+        if (!localStorage.getItem('token')) {
+            showToast('请先登录后再预订', 'error');
+            setTimeout(function() { window.location.href = '/login'; }, 1000);
+            return;
+        }
+
+        if (available <= 0) {
+            showToast('该航班已无余票', 'error');
+            return;
+        }
+
+        currentFlightId = flightId;
+        currentFlightPrice = price;
+
+        document.getElementById('bookingFlightInfo').innerHTML =
+            '<strong>' + escapeHtml(flightNo) + '</strong> &nbsp;|&nbsp; ¥' + price.toFixed(0) + ' /张 &nbsp;|&nbsp; 剩余 ' + available + ' 座';
+        document.getElementById('seatCount').max = available;
+        document.getElementById('bookingError').textContent = '';
+        document.getElementById('bookingForm').reset();
+        document.getElementById('seatCount').value = 1;
+
+        document.getElementById('bookingOverlay').classList.add('active');
+    }
+
+    function closeBooking() {
+        document.getElementById('bookingOverlay').classList.remove('active');
+        currentFlightId = null;
+    }
+
+    document.getElementById('bookingForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        var errorEl = document.getElementById('bookingError');
+        errorEl.textContent = '';
+
+        var submitBtn = this.querySelector('button[type="submit"]');
+        submitBtn.textContent = '提交中...';
+        submitBtn.disabled = true;
+
+        try {
+            var resp = await fetch('/api/bookings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + localStorage.getItem('token')
+                },
+                body: JSON.stringify({
+                    flight_id: currentFlightId,
+                    passenger_name: document.getElementById('passengerName').value,
+                    passenger_phone: document.getElementById('passengerPhone').value,
+                    seat_count: parseInt(document.getElementById('seatCount').value)
+                })
+            });
+
+            var data = await resp.json();
+
+            if (resp.ok) {
+                closeBooking();
+                showResult(data);
+                searchFlights(); // 刷新航班列表
+            } else {
+                errorEl.textContent = data.error || '预订失败';
+            }
+        } catch (err) {
+            errorEl.textContent = '网络错误，请稍后重试';
+        } finally {
+            submitBtn.textContent = '确认预订';
+            submitBtn.disabled = false;
+        }
+    });
+
+    function showResult(data) {
+        document.getElementById('bookingResult').innerHTML =
+            '<h3>✅ 预订成功！</h3>' +
+            '<p style="margin:8px 0;color:var(--text-secondary)">请保存您的预订号：</p>' +
+            '<div class="booking-no">' + escapeHtml(data.booking.booking_no) + '</div>' +
+            '<p style="margin-top:12px;font-size:14px;color:var(--text-secondary)">' +
+            '乘客：' + escapeHtml(data.booking.passenger_name) + ' &nbsp;|&nbsp; ' +
+            data.booking.seat_count + '张 &nbsp;|&nbsp; ¥' + data.booking.total_price.toFixed(0) +
+            '</p>';
+        document.getElementById('resultOverlay').classList.add('active');
+    }
+
+    function closeResult() {
+        document.getElementById('resultOverlay').classList.remove('active');
+    }
+
+    // ===== 工具函数 =====
+    function formatTime(iso) {
+        if (!iso) return '-';
+        var d = new Date(iso);
+        var year = d.getFullYear();
+        var month = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        var hour = String(d.getHours()).padStart(2, '0');
+        var min = String(d.getMinutes()).padStart(2, '0');
+        return year + '-' + month + '-' + day + ' ' + hour + ':' + min;
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function showToast(msg, type) {
+        var toast = document.createElement('div');
+        toast.className = 'toast toast-' + (type || 'success');
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        setTimeout(function() {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s';
+            setTimeout(function() { toast.remove(); }, 300);
+        }, 2500);
+    }
+
+    // 点击遮罩关闭模态框
+    document.getElementById('bookingOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closeBooking();
+    });
+    document.getElementById('resultOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closeResult();
+    });
+
+    // ESC 关闭模态框
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeBooking();
+            closeResult();
+        }
+    });
+
+    // 搜索框回车触发搜索
+    document.getElementById('searchOrigin').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') searchFlights();
+    });
+    document.getElementById('searchDest').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') searchFlights();
+    });
+    document.getElementById('searchDate').addEventListener('change', function() {
+        searchFlights();
+    });
+    </script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+# 数据目录（TiDB 持久化数据）
+data/
+
+# 后端日志
+.backend.log
+.backend.pid
+
+# Go 编译产物
+backend/server
+backend/flight-booking
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 测试
+*.test
+*.out
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# Claude Code 本地配置
+.claude/
+
+# 环境变量（如果有机密信息）
+.env
+.env.local

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 飞机订票系统</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <h1>✈️</h1>
+            <h2>用户登录</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="username">用户名</label>
+                    <input type="text" id="username" placeholder="请输入用户名" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="password">密码</label>
+                    <input type="password" id="password" placeholder="请输入密码" required autocomplete="current-password">
+                </div>
+                <div class="form-error" id="errorMsg"></div>
+                <button type="submit" class="btn btn-primary" id="submitBtn">登 录</button>
+            </form>
+            <p class="auth-footer">
+                还没有账号？<a href="/register">立即注册</a>
+            </p>
+            <p class="auth-footer">
+                <a href="/">← 返回首页</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        // 已登录则跳回首页
+        if (localStorage.getItem('token')) {
+            window.location.href = '/';
+            return;
+        }
+
+        const form = document.getElementById('loginForm');
+        const errorEl = document.getElementById('errorMsg');
+        const submitBtn = document.getElementById('submitBtn');
+
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            errorEl.textContent = '';
+            submitBtn.textContent = '登录中...';
+            submitBtn.disabled = true;
+
+            try {
+                const resp = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value
+                    })
+                });
+
+                const data = await resp.json();
+
+                if (resp.ok) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('username', data.username);
+                    window.location.href = '/';
+                } else {
+                    errorEl.textContent = data.error || '登录失败';
+                }
+            } catch (err) {
+                errorEl.textContent = '网络错误，请稍后重试';
+            } finally {
+                submitBtn.textContent = '登 录';
+                submitBtn.disabled = false;
+            }
+        });
+    })();
+    </script>
+</body>
+</html>

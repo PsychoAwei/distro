@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注册 - 飞机订票系统</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <h1>✈️</h1>
+            <h2>用户注册</h2>
+            <form id="registerForm">
+                <div class="form-group">
+                    <label for="username">用户名</label>
+                    <input type="text" id="username" placeholder="3-50个字符" required minlength="3" maxlength="50" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="password">密码</label>
+                    <input type="password" id="password" placeholder="至少6位" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="confirmPassword">确认密码</label>
+                    <input type="password" id="confirmPassword" placeholder="再次输入密码" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="form-error" id="errorMsg"></div>
+                <div class="form-success" id="successMsg"></div>
+                <button type="submit" class="btn btn-primary" id="submitBtn">注 册</button>
+            </form>
+            <p class="auth-footer">
+                已有账号？<a href="/login">立即登录</a>
+            </p>
+            <p class="auth-footer">
+                <a href="/">← 返回首页</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        if (localStorage.getItem('token')) {
+            window.location.href = '/';
+            return;
+        }
+
+        const form = document.getElementById('registerForm');
+        const errorEl = document.getElementById('errorMsg');
+        const successEl = document.getElementById('successMsg');
+        const submitBtn = document.getElementById('submitBtn');
+
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            errorEl.textContent = '';
+            successEl.textContent = '';
+
+            const password = document.getElementById('password').value;
+            const confirm = document.getElementById('confirmPassword').value;
+
+            if (password !== confirm) {
+                errorEl.textContent = '两次输入的密码不一致';
+                return;
+            }
+
+            submitBtn.textContent = '注册中...';
+            submitBtn.disabled = true;
+
+            try {
+                const resp = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: password
+                    })
+                });
+
+                const data = await resp.json();
+
+                if (resp.ok) {
+                    successEl.textContent = '注册成功！即将跳转到登录页...';
+                    setTimeout(function() {
+                        window.location.href = '/login';
+                    }, 1500);
+                } else {
+                    errorEl.textContent = data.error || '注册失败';
+                }
+            } catch (err) {
+                errorEl.textContent = '网络错误，请稍后重试';
+            } finally {
+                submitBtn.textContent = '注 册';
+                submitBtn.disabled = false;
+            }
+        });
+    })();
+    </script>
+</body>
+</html>

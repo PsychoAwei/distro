@@ -1,0 +1,119 @@
+# ===========================================
+# 飞机订票系统 — 分布式数据库课程作业
+# 基于 TiDB (PD + TiKV ×2 + TiDB Server) + Go 后端
+#
+# 启动: docker-compose up -d
+# 访问: http://localhost:8080
+# ===========================================
+
+networks:
+  tidb-net:
+    driver: bridge
+
+volumes:
+  pd-data:
+  tikv1-data:
+  tikv2-data:
+
+services:
+  # 1. Placement Driver (PD) - 集群调度中心
+  pd:
+    image: pingcap/pd:latest
+    container_name: tidb-pd
+    ports:
+      - "2379:2379"
+    volumes:
+      - ./data/pd:/data
+    command:
+      - --name=pd
+      - --client-urls=http://0.0.0.0:2379
+      - --peer-urls=http://0.0.0.0:2380
+      - --advertise-client-urls=http://pd:2379
+      - --advertise-peer-urls=http://pd:2380
+      - --data-dir=/data/pd
+      - --initial-cluster=pd=http://pd:2380
+    networks:
+      - tidb-net
+    restart: on-failure
+
+  # 2. TiKV 节点1 - 分布式存储引擎
+  tikv1:
+    image: pingcap/tikv:latest
+    container_name: tidb-tikv1
+    volumes:
+      - ./data/tikv1:/data
+    command:
+      - --addr=0.0.0.0:20160
+      - --advertise-addr=tikv1:20160
+      - --data-dir=/data/tikv1
+      - --pd=pd:2379
+    depends_on:
+      - pd
+    networks:
+      - tidb-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  # 3. TiKV 节点2 - 第二个存储节点
+  tikv2:
+    image: pingcap/tikv:latest
+    container_name: tidb-tikv2
+    volumes:
+      - ./data/tikv2:/data
+    command:
+      - --addr=0.0.0.0:20160
+      - --advertise-addr=tikv2:20160
+      - --data-dir=/data/tikv2
+      - --pd=pd:2379
+    depends_on:
+      - pd
+    networks:
+      - tidb-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  # 4. TiDB Server - SQL 入口
+  tidb:
+    image: pingcap/tidb:latest
+    container_name: tidb-server
+    ports:
+      - "4000:4000"
+      - "10080:10080"
+    command:
+      - --store=tikv
+      - --path=pd:2379
+      - --advertise-address=tidb
+    depends_on:
+      - tikv1
+      - tikv2
+    networks:
+      - tidb-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # 5. Go 后端 - REST API + 前端页面
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: flight-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_DSN=root:@tcp(tidb:4000)/?charset=utf8mb4&parseTime=True&loc=Local
+      - FRONTEND_DIR=/frontend
+      - JWT_SECRET=flight-booking-secret-key-2026
+    depends_on:
+      - tidb
+    networks:
+      - tidb-net
+    restart: on-failure
