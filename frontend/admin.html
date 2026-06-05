@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台 — 飞机订票系统</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <span class="nav-brand">✈️ 管理后台</span>
+        <div class="nav-links" id="navLinks">
+            <!-- JS 动态渲染 -->
+        </div>
+    </nav>
+
+    <div class="admin-container">
+        <div class="admin-header">
+            <h2 id="adminTitle">🔧 系统管理</h2>
+            <div>
+                <a href="/"><button class="btn btn-outline btn-sm">← 返回首页</button></a>
+                <button class="btn btn-outline btn-sm" onclick="logout()">退出</button>
+            </div>
+        </div>
+
+        <!-- 标签页 -->
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchAdminTab('flights')">✈️ 航班管理</button>
+            <button class="tab-btn" onclick="switchAdminTab('users')">👥 用户管理</button>
+            <button class="tab-btn" onclick="switchAdminTab('bookings')">📋 订单管理</button>
+        </div>
+
+        <!-- 统计卡片 -->
+        <div class="stats-row" id="adminStats"></div>
+
+        <!-- ========== 航班管理 ========== -->
+        <div class="tab-panel active" id="admin-flights">
+            <div class="admin-card">
+                <div class="toolbar">
+                    <h3>航班列表</h3>
+                    <button class="btn btn-primary" onclick="openFlightForm()">+ 新增航班</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>航班号</th>
+                            <th>出发→到达</th>
+                            <th>出发时间</th>
+                            <th>到达时间</th>
+                            <th>总/余座</th>
+                            <th>票价</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminFlightsBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ========== 用户管理 ========== -->
+        <div class="tab-panel" id="admin-users">
+            <div class="admin-card">
+                <h3>用户列表</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>用户名</th>
+                            <th>角色</th>
+                            <th>注册时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminUsersBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ========== 订单管理 ========== -->
+        <div class="tab-panel" id="admin-bookings">
+            <div class="admin-card">
+                <h3>全部订单</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>预订号</th>
+                            <th>用户ID</th>
+                            <th>航班ID</th>
+                            <th>乘客</th>
+                            <th>数量</th>
+                            <th>总价</th>
+                            <th>状态</th>
+                            <th>支付</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminBookingsBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 航班编辑模态框 -->
+    <div class="modal-overlay" id="flightFormOverlay">
+        <div class="modal" style="max-width:520px">
+            <button class="modal-close" onclick="closeFlightForm()">&times;</button>
+            <h3 id="flightFormTitle">新增航班</h3>
+            <form id="flightForm">
+                <input type="hidden" id="flightEditId">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fFlightNo">航班号</label>
+                        <input type="text" id="fFlightNo" placeholder="如 CA1234" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="fPrice">票价 (¥)</label>
+                        <input type="number" id="fPrice" min="0" step="0.01" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fOrigin">出发城市</label>
+                        <input type="text" id="fOrigin" placeholder="北京" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="fDestination">到达城市</label>
+                        <input type="text" id="fDestination" placeholder="上海" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fDeparture">出发时间</label>
+                        <input type="datetime-local" id="fDeparture" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="fArrival">到达时间</label>
+                        <input type="datetime-local" id="fArrival" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fSeats">总座位数</label>
+                        <input type="number" id="fSeats" min="1" value="180" required>
+                    </div>
+                </div>
+                <div class="form-error" id="flightFormError"></div>
+                <button type="submit" class="btn btn-primary" id="flightFormSubmit">确认新增</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 订单详情模态框 -->
+    <div class="modal-overlay" id="bookingDetailOverlay">
+        <div class="modal" style="max-width:480px">
+            <button class="modal-close" onclick="closeBookingDetail()">&times;</button>
+            <h3>📋 订单详情</h3>
+            <div id="bookingDetailContent"></div>
+            <div class="btn-group" style="margin-top:16px">
+                <button class="btn btn-danger" id="adminCancelBtn" onclick="adminCancelFromDetail()">强制取消</button>
+                <button class="btn btn-outline" onclick="closeBookingDetail()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    var currentDetailBookingNo = null;
+
+    // ===== 初始化 =====
+    document.addEventListener('DOMContentLoaded', function() {
+        if (localStorage.getItem('role') !== 'admin') {
+            alert('需要管理员权限');
+            window.location.href = '/';
+            return;
+        }
+        renderNav();
+        loadAdminFlights();
+        loadStats();
+    });
+
+    function renderNav() {
+        document.getElementById('navLinks').innerHTML =
+            '<span class="nav-user-info">👤 ' + escapeHtml(localStorage.getItem('username') || '') +
+            ' <span class="badge badge-admin">管理员</span></span>';
+    }
+
+    function logout() {
+        localStorage.removeItem('token');
+        localStorage.removeItem('username');
+        localStorage.removeItem('role');
+        window.location.href = '/login';
+    }
+
+    // ===== 标签页切换 =====
+    function switchAdminTab(name) {
+        document.querySelectorAll('.tab-btn').forEach(function(btn, i) {
+            var tabNames = ['flights', 'users', 'bookings'];
+            btn.classList.toggle('active', tabNames[i] === name);
+        });
+        document.querySelectorAll('.tab-panel').forEach(function(panel) {
+            panel.classList.remove('active');
+        });
+        document.getElementById('admin-' + name).classList.add('active');
+
+        if (name === 'flights') loadAdminFlights();
+        if (name === 'users') loadAdminUsers();
+        if (name === 'bookings') loadAdminBookings();
+    }
+
+    // ===== 加载统计 =====
+    async function loadStats() {
+        try {
+            var [fResp, uResp, bResp] = await Promise.all([
+                fetch('/api/admin/flights', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } }),
+                fetch('/api/admin/users', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } }),
+                fetch('/api/admin/bookings', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } })
+            ]);
+            var flights = ((await fResp.json()).flights || []);
+            var users = ((await uResp.json()).users || []);
+            var bookings = ((await bResp.json()).bookings || []);
+            var confirmedOrders = bookings.filter(function(b) { return b.status === 'confirmed'; });
+
+            document.getElementById('adminStats').innerHTML =
+                '<div class="stat-card">' +
+                '<div class="stat-icon blue">✈️</div>' +
+                '<div><div class="stat-value">' + flights.length + '</div><div class="stat-label">航班总数</div></div>' +
+                '</div>' +
+                '<div class="stat-card">' +
+                '<div class="stat-icon green">👥</div>' +
+                '<div><div class="stat-value">' + users.length + '</div><div class="stat-label">用户总数</div></div>' +
+                '</div>' +
+                '<div class="stat-card">' +
+                '<div class="stat-icon amber">📋</div>' +
+                '<div><div class="stat-value">' + confirmedOrders.length + '</div><div class="stat-label">活跃订单</div></div>' +
+                '</div>' +
+                '<div class="stat-card">' +
+                '<div class="stat-icon green">📦</div>' +
+                '<div><div class="stat-value">' + bookings.length + '</div><div class="stat-label">总订单数</div></div>' +
+                '</div>';
+        } catch(e) { /* stats load failed, non-critical */ }
+    }
+
+    // 标签切换时也刷新统计
+    var origSwitchTab = switchAdminTab;
+    switchAdminTab = function(name) {
+        origSwitchTab(name);
+        loadStats();
+    };
+
+    // ========== 航班管理 ==========
+    async function loadAdminFlights() {
+        try {
+            var resp = await fetch('/api/admin/flights', {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+            });
+            var data = await resp.json();
+            var flights = data.flights || [];
+
+            document.getElementById('adminFlightsBody').innerHTML = flights.map(function(f) {
+                return '<tr>' +
+                    '<td>' + f.id + '</td>' +
+                    '<td><strong>' + escapeHtml(f.flight_no) + '</strong></td>' +
+                    '<td>' + escapeHtml(f.origin) + ' → ' + escapeHtml(f.destination) + '</td>' +
+                    '<td>' + formatTime(f.departure_time) + '</td>' +
+                    '<td>' + formatTime(f.arrival_time) + '</td>' +
+                    '<td>' + f.available_seats + '/' + f.total_seats + '</td>' +
+                    '<td class="price">¥' + f.price.toFixed(0) + '</td>' +
+                    '<td><div class="btn-group">' +
+                    '<button class="btn btn-outline btn-sm" onclick="editFlight(' + f.id + ')">编辑</button>' +
+                    '<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteFlight(' + f.id + ', \'' + escapeHtml(f.flight_no) + '\')">删除</button>' +
+                    '</div></td>' +
+                    '</tr>';
+            }).join('') || '<tr class="empty-row"><td colspan="8">暂无航班</td></tr>';
+        } catch (err) {
+            document.getElementById('adminFlightsBody').innerHTML =
+                '<tr class="empty-row"><td colspan="8">加载失败</td></tr>';
+        }
+    }
+
+    function openFlightForm(flight) {
+        document.getElementById('flightEditId').value = flight ? flight.id : '';
+        document.getElementById('flightFormTitle').textContent = flight ? '编辑航班' : '新增航班';
+        document.getElementById('flightFormSubmit').textContent = flight ? '确认修改' : '确认新增';
+
+        if (flight) {
+            document.getElementById('fFlightNo').value = flight.flight_no;
+            document.getElementById('fOrigin').value = flight.origin;
+            document.getElementById('fDestination').value = flight.destination;
+            document.getElementById('fDeparture').value = toDatetimeLocal(flight.departure_time);
+            document.getElementById('fArrival').value = toDatetimeLocal(flight.arrival_time);
+            document.getElementById('fSeats').value = flight.total_seats;
+            document.getElementById('fPrice').value = flight.price;
+        } else {
+            document.getElementById('flightForm').reset();
+            document.getElementById('fSeats').value = 180;
+        }
+        document.getElementById('flightFormError').textContent = '';
+        document.getElementById('flightFormOverlay').classList.add('active');
+    }
+
+    function closeFlightForm() {
+        document.getElementById('flightFormOverlay').classList.remove('active');
+    }
+
+    document.getElementById('flightForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        var id = document.getElementById('flightEditId').value;
+        var isEdit = !!id;
+        var errorEl = document.getElementById('flightFormError');
+        errorEl.textContent = '';
+
+        var body = {
+            flight_no: document.getElementById('fFlightNo').value,
+            origin: document.getElementById('fOrigin').value,
+            destination: document.getElementById('fDestination').value,
+            departure_time: document.getElementById('fDeparture').value.replace('T', ' ') + ':00',
+            arrival_time: document.getElementById('fArrival').value.replace('T', ' ') + ':00',
+            total_seats: parseInt(document.getElementById('fSeats').value),
+            price: parseFloat(document.getElementById('fPrice').value)
+        };
+
+        var url = isEdit ? '/api/admin/flights/' + id : '/api/admin/flights';
+        var method = isEdit ? 'PUT' : 'POST';
+
+        try {
+            var resp = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + localStorage.getItem('token')
+                },
+                body: JSON.stringify(body)
+            });
+            var data = await resp.json();
+
+            if (resp.ok) {
+                closeFlightForm();
+                loadAdminFlights();
+                showToast(isEdit ? '航班已更新' : '航班已创建', 'success');
+            } else {
+                errorEl.textContent = data.error || '操作失败';
+            }
+        } catch (err) {
+            errorEl.textContent = '网络错误';
+        }
+    });
+
+    async function editFlight(id) {
+        try {
+            var resp = await fetch('/api/flights/' + id);
+            var data = await resp.json();
+            if (data.flight) openFlightForm(data.flight);
+        } catch (err) {
+            showToast('加载航班信息失败', 'error');
+        }
+    }
+
+    async function deleteFlight(id, flightNo) {
+        if (!confirm('确定要删除航班 ' + flightNo + ' 吗？此操作不可恢复。')) return;
+
+        try {
+            var resp = await fetch('/api/admin/flights/' + id, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+            });
+            if (resp.ok) {
+                showToast('航班已删除', 'success');
+                loadAdminFlights();
+            } else {
+                var data = await resp.json();
+                showToast(data.error || '删除失败', 'error');
+            }
+        } catch (err) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    // ========== 用户管理 ==========
+    async function loadAdminUsers() {
+        try {
+            var resp = await fetch('/api/admin/users', {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+            });
+            var data = await resp.json();
+            var users = data.users || [];
+
+            document.getElementById('adminUsersBody').innerHTML = users.map(function(u) {
+                var badgeClass = u.role === 'admin' ? 'badge-admin' : 'badge-user';
+                var toggleRole = u.role === 'admin' ? 'user' : 'admin';
+                var toggleLabel = u.role === 'admin' ? '降为用户' : '升为管理员';
+                return '<tr>' +
+                    '<td>' + u.id + '</td>' +
+                    '<td>' + escapeHtml(u.username) + '</td>' +
+                    '<td><span class="badge ' + badgeClass + '">' + u.role + '</span></td>' +
+                    '<td>' + formatTime(u.created_at) + '</td>' +
+                    '<td><div class="btn-group">' +
+                    '<button class="btn btn-outline btn-sm" onclick="toggleUserRole(' + u.id + ', \'' + toggleRole + '\')">' + toggleLabel + '</button>' +
+                    '<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteUser(' + u.id + ', \'' + escapeHtml(u.username) + '\')">删除</button>' +
+                    '</div></td>' +
+                    '</tr>';
+            }).join('') || '<tr class="empty-row"><td colspan="5">暂无用户</td></tr>';
+        } catch (err) {
+            document.getElementById('adminUsersBody').innerHTML =
+                '<tr class="empty-row"><td colspan="5">加载失败</td></tr>';
+        }
+    }
+
+    async function toggleUserRole(id, newRole) {
+        try {
+            var resp = await fetch('/api/admin/users/' + id, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + localStorage.getItem('token')
+                },
+                body: JSON.stringify({ role: newRole })
+            });
+            if (resp.ok) {
+                showToast('角色已更新', 'success');
+                loadAdminUsers();
+            } else {
+                var data = await resp.json();
+                showToast(data.error || '更新失败', 'error');
+            }
+        } catch (err) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    async function deleteUser(id, username) {
+        if (!confirm('确定要删除用户 "' + username + '" 吗？')) return;
+
+        try {
+            var resp = await fetch('/api/admin/users/' + id, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+            });
+            if (resp.ok) {
+                showToast('用户已删除', 'success');
+                loadAdminUsers();
+            } else {
+                var data = await resp.json();
+                showToast(data.error || '删除失败', 'error');
+            }
+        } catch (err) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    // ========== 订单管理 ==========
+    async function loadAdminBookings() {
+        try {
+            var resp = await fetch('/api/admin/bookings', {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+            });
+            var data = await resp.json();
+            var bookings = data.bookings || [];
+
+            // 批量获取支付状态
+            var paymentMap = {};
+            try {
+                var payResp = await fetch('/api/admin/payments', {
+                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+                });
+                if (payResp.ok) {
+                    var payData = await payResp.json();
+                    (payData.payments || []).forEach(function(p) {
+                        paymentMap[p.booking_id] = p.status;
+                    });
+                }
+            } catch(e) {}
+
+            document.getElementById('adminBookingsBody').innerHTML = bookings.map(function(b) {
+                var statusClass = b.status === 'cancelled' ? 'status-cancelled' : '';
+                var payStatus = paymentMap[b.id] || '未支付';
+                var payClass = payStatus === 'paid' ? 'status-paid' : 'status-pending';
+
+                return '<tr>' +
+                    '<td><code style="font-size:12px">' + escapeHtml(b.booking_no.substring(0, 8)) + '...</code></td>' +
+                    '<td>' + b.user_id + '</td>' +
+                    '<td>' + b.flight_id + '</td>' +
+                    '<td>' + escapeHtml(b.passenger_name) + '</td>' +
+                    '<td>' + b.seat_count + '张</td>' +
+                    '<td class="price">¥' + b.total_price.toFixed(0) + '</td>' +
+                    '<td><span class="status-badge ' + statusClass + '">' + (b.status === 'confirmed' ? '✅ 已确认' : '已取消') + '</span></td>' +
+                    '<td><span class="status-badge ' + payClass + '">' + (payStatus === 'paid' ? '已支付' : payStatus === 'refunded' ? '已退款' : '待支付') + '</span></td>' +
+                    '<td><div class="btn-group">' +
+                    '<button class="btn btn-outline btn-sm" onclick="openBookingDetail(\'' + escapeHtml(b.booking_no) + '\')">详情</button>' +
+                    (b.status === 'confirmed' ? '<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="adminCancelBooking(\'' + escapeHtml(b.booking_no) + '\')">取消</button>' : '') +
+                    '</div></td>' +
+                    '</tr>';
+            }).join('') || '<tr class="empty-row"><td colspan="9">暂无订单</td></tr>';
+        } catch (err) {
+            document.getElementById('adminBookingsBody').innerHTML =
+                '<tr class="empty-row"><td colspan="9">加载失败</td></tr>';
+        }
+    }
+
+    async function openBookingDetail(bookingNo) {
+        currentDetailBookingNo = bookingNo;
+        try {
+            var resp = await fetch('/api/admin/bookings/' + bookingNo, {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+            });
+            var data = await resp.json();
+            var b = data.booking;
+            var p = data.payment;
+
+            document.getElementById('bookingDetailContent').innerHTML =
+                '<div class="detail-row"><span class="detail-label">预订号</span><span class="detail-value" style="font-family:monospace">' + escapeHtml(b.booking_no) + '</span></div>' +
+                '<div class="detail-row"><span class="detail-label">用户ID</span><span class="detail-value">' + b.user_id + '</span></div>' +
+                '<div class="detail-row"><span class="detail-label">航班ID</span><span class="detail-value">' + b.flight_id + '</span></div>' +
+                '<div class="detail-row"><span class="detail-label">乘客</span><span class="detail-value">' + escapeHtml(b.passenger_name) + '</span></div>' +
+                '<div class="detail-row"><span class="detail-label">电话</span><span class="detail-value">' + escapeHtml(b.passenger_phone) + '</span></div>' +
+                '<div class="detail-row"><span class="detail-label">数量</span><span class="detail-value">' + b.seat_count + '张</span></div>' +
+                '<div class="detail-row"><span class="detail-label">总价</span><span class="detail-value" style="color:var(--danger);font-weight:700">¥' + b.total_price.toFixed(0) + '</span></div>' +
+                '<div class="detail-row"><span class="detail-label">状态</span><span class="detail-value"><span class="status-badge ' + (b.status === 'confirmed' ? 'status-paid' : 'status-cancelled') + '">' + (b.status === 'confirmed' ? '已确认' : '已取消') + '</span></span></div>' +
+                '<div class="detail-row"><span class="detail-label">支付</span><span class="detail-value"><span class="status-badge ' + (p && p.status === 'paid' ? 'status-paid' : 'status-pending') + '">' + (p ? (p.status === 'paid' ? '已支付 ¥' + p.amount.toFixed(0) : p.status) : '待支付') + '</span></span></div>' +
+                '<div class="detail-row"><span class="detail-label">创建时间</span><span class="detail-value">' + formatTime(b.created_at) + '</span></div>';
+
+            document.getElementById('adminCancelBtn').style.display = b.status === 'confirmed' ? '' : 'none';
+            document.getElementById('bookingDetailOverlay').classList.add('active');
+        } catch (err) {
+            showToast('加载详情失败', 'error');
+        }
+    }
+
+    function closeBookingDetail() {
+        document.getElementById('bookingDetailOverlay').classList.remove('active');
+        currentDetailBookingNo = null;
+    }
+
+    async function adminCancelFromDetail() {
+        if (!confirm('确定要强制取消此订单吗？')) return;
+        await doAdminCancel(currentDetailBookingNo);
+        closeBookingDetail();
+    }
+
+    async function adminCancelBooking(bookingNo) {
+        if (!confirm('确定要强制取消此订单吗？')) return;
+        await doAdminCancel(bookingNo);
+    }
+
+    async function doAdminCancel(bookingNo) {
+        try {
+            var resp = await fetch('/api/admin/bookings/' + bookingNo, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+            });
+            if (resp.ok) {
+                showToast('订单已强制取消', 'success');
+                loadAdminBookings();
+                loadAdminFlights();
+            } else {
+                var data = await resp.json();
+                showToast(data.error || '取消失败', 'error');
+            }
+        } catch (err) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    // ===== 工具函数 =====
+    function formatTime(iso) {
+        if (!iso) return '-';
+        var d = new Date(iso);
+        var year = d.getFullYear();
+        var month = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        var hour = String(d.getHours()).padStart(2, '0');
+        var min = String(d.getMinutes()).padStart(2, '0');
+        return year + '-' + month + '-' + day + ' ' + hour + ':' + min;
+    }
+
+    function toDatetimeLocal(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        var year = d.getFullYear();
+        var month = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        var hour = String(d.getHours()).padStart(2, '0');
+        var min = String(d.getMinutes()).padStart(2, '0');
+        return year + '-' + month + '-' + day + 'T' + hour + ':' + min;
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function showToast(msg, type) {
+        var icons = { success: '✅', error: '❌', warning: '⚠️' };
+        var icon = icons[type] || '';
+        var toast = document.createElement('div');
+        toast.className = 'toast toast-' + (type || 'success');
+        toast.innerHTML = '<span>' + icon + '</span> ' + msg;
+        document.body.appendChild(toast);
+        setTimeout(function() {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s';
+            setTimeout(function() { toast.remove(); }, 300);
+        }, 3000);
+    }
+
+    // 模态框关闭事件
+    document.getElementById('flightFormOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closeFlightForm();
+    });
+    document.getElementById('bookingDetailOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closeBookingDetail();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeFlightForm();
+            closeBookingDetail();
+        }
+    });
+    </script>
+</body>
+</html>

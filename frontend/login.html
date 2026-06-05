@@ -9,8 +9,9 @@
 <body>
     <div class="auth-container">
         <div class="auth-card">
-            <h1>✈️</h1>
-            <h2>用户登录</h2>
+            <div class="logo-icon">✈️</div>
+            <h1>欢迎回来</h1>
+            <h2>登录您的账号以继续</h2>
             <form id="loginForm">
                 <div class="form-group">
                     <label for="username">用户名</label>
@@ -65,7 +66,9 @@
                 if (resp.ok) {
                     localStorage.setItem('token', data.token);
                     localStorage.setItem('username', data.username);
-                    window.location.href = '/';
+                    localStorage.setItem('role', data.role);
+                    // 管理员跳转至后台，普通用户回首页
+                    window.location.href = data.role === 'admin' ? '/admin' : '/';
                 } else {
                     errorEl.textContent = data.error || '登录失败';
                 }

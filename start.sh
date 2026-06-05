@@ -53,9 +53,12 @@ start_docker() {
             echo -e "${GREEN}══════════════════════════════════════${NC}"
             echo -e "${GREEN}   启动成功！🎉${NC}"
             echo ""
-            echo "   🌐 主页:  http://localhost:8080"
-            echo "   🔑 登录:  http://localhost:8080/login"
-            echo "   📝 注册:  http://localhost:8080/register"
+            echo "   🌐 主页:      http://localhost:8080"
+            echo "   🔑 登录:      http://localhost:8080/login"
+            echo "   📝 注册:      http://localhost:8080/register"
+            echo "   🔧 管理后台:  http://localhost:8080/admin"
+            echo ""
+            echo "   👤 默认管理员: admin / admin123"
             echo ""
             echo "   查看状态: ./start.sh status"
             echo "   查看日志: ./start.sh logs"
@@ -147,7 +150,7 @@ show_status() {
 
     echo ""
     echo "🌐 前端页面："
-    for page in "/" "/login" "/register"; do
+    for page in "/" "/login" "/register" "/admin"; do
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080$page" 2>/dev/null || echo "---")
         if [ "$STATUS" = "200" ]; then
             echo -e "   ${GREEN}$STATUS${NC}  http://localhost:8080$page"
@@ -176,7 +179,12 @@ reset_data() {
     docker-compose down -v
 
     log_step "清理本地数据目录..."
-    sudo rm -rf data/pd data/tikv1 data/tikv2 2>/dev/null || rm -rf data/pd data/tikv1 data/tikv2 2>/dev/null || true
+    if [ -d data/pd ]; then
+        # 尝试直接删除，如果权限不足则用 docker 临时容器删除
+        rm -rf data/pd data/tikv1 data/tikv2 2>/dev/null || \
+            docker run --rm -v "$PROJECT_DIR/data:/data" alpine rm -rf /data/pd /data/tikv1 /data/tikv2 2>/dev/null || \
+            { log_warn "无法自动清理 data/ 目录 (需 root 权限)，请手动: sudo rm -rf data/pd data/tikv1 data/tikv2"; }
+    fi
 
     log_info "数据已重置"
 

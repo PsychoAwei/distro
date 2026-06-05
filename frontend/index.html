@@ -17,35 +17,72 @@
 
     <!-- 主内容 -->
     <div class="main-content">
-        <!-- 搜索栏 -->
-        <div class="search-bar">
-            <input type="text" id="searchOrigin" placeholder="出发城市">
-            <input type="text" id="searchDest" placeholder="到达城市">
-            <input type="date" id="searchDate">
-            <button class="btn btn-primary" onclick="searchFlights()">🔍 搜索航班</button>
-            <button class="btn btn-outline" onclick="resetSearch()">重置</button>
+        <!-- 欢迎横幅 -->
+        <div class="hero-banner">
+            <h2>✈️ 探索您的下一段旅程</h2>
+            <p>搜索航班、在线预订、轻松支付 — 一站式出行体验</p>
         </div>
 
-        <!-- 航班列表 -->
-        <div class="flights-card">
-            <h3>📋 航班列表</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>航班号</th>
-                        <th>出发</th>
-                        <th>到达</th>
-                        <th>出发时间</th>
-                        <th>到达时间</th>
-                        <th>票价</th>
-                        <th>余票</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody id="flightsBody">
-                    <!-- JS 动态渲染 -->
-                </tbody>
-            </table>
+        <!-- 标签页导航 -->
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('search')">🔍 航班搜索</button>
+            <button class="tab-btn" onclick="switchTab('orders')">📋 我的订单</button>
+        </div>
+
+        <!-- 航班搜索面板 -->
+        <div class="tab-panel active" id="panel-search">
+            <div class="search-bar">
+                <input type="text" id="searchOrigin" placeholder="出发城市">
+                <input type="text" id="searchDest" placeholder="到达城市">
+                <input type="date" id="searchDate">
+                <button class="btn btn-primary" onclick="searchFlights()">🔍 搜索航班</button>
+                <button class="btn btn-outline" onclick="resetSearch()">重置</button>
+            </div>
+
+            <div class="flights-card">
+                <h3>📋 航班列表</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>航班号</th>
+                            <th>出发</th>
+                            <th>到达</th>
+                            <th>出发时间</th>
+                            <th>到达时间</th>
+                            <th>票价</th>
+                            <th>余票</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="flightsBody">
+                        <!-- JS 动态渲染 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 我的订单面板 -->
+        <div class="tab-panel" id="panel-orders">
+            <div class="flights-card">
+                <h3>📋 我的订单</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>预订号</th>
+                            <th>航班号</th>
+                            <th>乘客</th>
+                            <th>数量</th>
+                            <th>总价</th>
+                            <th>状态</th>
+                            <th>支付</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="myOrdersBody">
+                        <!-- JS 动态渲染 -->
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -84,26 +121,56 @@
         </div>
     </div>
 
+    <!-- 支付确认模态框 -->
+    <div class="modal-overlay" id="payOverlay">
+        <div class="modal">
+            <button class="modal-close" onclick="closePay()">&times;</button>
+            <h3>💳 模拟支付</h3>
+            <div id="payInfo" style="margin:16px 0;font-size:14px;color:var(--text-secondary)"></div>
+            <div class="form-error" id="payError"></div>
+            <button class="btn btn-primary" id="payConfirmBtn" onclick="confirmPay()">确认支付</button>
+        </div>
+    </div>
+
     <script>
     // ===== 全局状态 =====
     let currentFlightId = null;
     let currentFlightPrice = null;
+    let currentPayBookingNo = null;
+    let allFlightsCache = {}; // 缓存航班信息 {flight_id: flight}
 
     // ===== 初始化 =====
     document.addEventListener('DOMContentLoaded', function() {
+        // 管理员跳转到后台
+        if (localStorage.getItem('role') === 'admin') {
+            window.location.href = '/admin';
+            return;
+        }
         renderNav();
         searchFlights();
     });
+
+    // ===== 标签页切换 =====
+    function switchTab(name) {
+        document.querySelectorAll('.tab-btn').forEach(function(btn, i) {
+            btn.classList.toggle('active', (name === 'search' && i === 0) || (name === 'orders' && i === 1));
+        });
+        document.getElementById('panel-search').classList.toggle('active', name === 'search');
+        document.getElementById('panel-orders').classList.toggle('active', name === 'orders');
+        if (name === 'orders') loadMyOrders();
+    }
 
     // ===== 导航栏 =====
     function renderNav() {
         var nav = document.getElementById('navLinks');
         var token = localStorage.getItem('token');
         var username = localStorage.getItem('username');
+        var role = localStorage.getItem('role');
 
         if (token) {
+            var roleBadge = role === 'admin' ? ' <span class="badge badge-admin">管理员</span>' : '';
             nav.innerHTML =
-                '<span class="nav-user-info">👤 ' + escapeHtml(username) + '</span>' +
+                '<span class="nav-user-info">👤 ' + escapeHtml(username) + roleBadge + '</span>' +
                 '<button class="btn btn-outline btn-sm" onclick="logout()">退出</button>';
         } else {
             nav.innerHTML =
@@ -115,6 +182,7 @@
     function logout() {
         localStorage.removeItem('token');
         localStorage.removeItem('username');
+        localStorage.removeItem('role');
         renderNav();
         searchFlights();
         showToast('已退出登录', 'success');
@@ -134,7 +202,10 @@
         try {
             var resp = await fetch('/api/flights?' + params.toString());
             var data = await resp.json();
-            renderFlights(data.flights || []);
+            var flights = data.flights || [];
+            // 缓存航班信息
+            flights.forEach(function(f) { allFlightsCache[f.id] = f; });
+            renderFlights(flights);
         } catch (err) {
             showToast('加载航班失败', 'error');
         }
@@ -258,6 +329,176 @@
         document.getElementById('resultOverlay').classList.remove('active');
     }
 
+    // ===== 我的订单 =====
+    async function loadMyOrders() {
+        var token = localStorage.getItem('token');
+        if (!token) {
+            document.getElementById('myOrdersBody').innerHTML =
+                '<tr class="empty-row"><td colspan="8">请先<a href="/login">登录</a>后查看订单</td></tr>';
+            return;
+        }
+
+        try {
+            var resp = await fetch('/api/bookings', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            var data = await resp.json();
+
+            if (!resp.ok) {
+                document.getElementById('myOrdersBody').innerHTML =
+                    '<tr class="empty-row"><td colspan="8">加载失败：' + escapeHtml(data.error || '') + '</td></tr>';
+                return;
+            }
+
+            renderMyOrders(data.bookings || []);
+        } catch (err) {
+            document.getElementById('myOrdersBody').innerHTML =
+                '<tr class="empty-row"><td colspan="8">网络错误，请稍后重试</td></tr>';
+        }
+    }
+
+    async function renderMyOrders(bookings) {
+        var body = document.getElementById('myOrdersBody');
+
+        if (bookings.length === 0) {
+            body.innerHTML = '<tr class="empty-row"><td colspan="8">📭 还没有任何订单</td></tr>';
+            return;
+        }
+
+        // 收集所有需要的航班 ID
+        var flightIds = bookings.map(function(b) { return b.flight_id; });
+        var uncachedIds = flightIds.filter(function(id) { return !allFlightsCache[id]; });
+
+        // 批量加载未缓存的航班
+        if (uncachedIds.length > 0) {
+            for (var i = 0; i < uncachedIds.length; i++) {
+                try {
+                    var resp = await fetch('/api/flights/' + uncachedIds[i]);
+                    if (resp.ok) {
+                        var data = await resp.json();
+                        if (data.flight) allFlightsCache[data.flight.id] = data.flight;
+                    }
+                } catch (e) { /* skip */ }
+            }
+        }
+
+        // 获取所有支付状态
+        var paymentMap = {};
+        try {
+            // 逐个检查支付（通过预订号获取详情）
+            for (var j = 0; j < bookings.length; j++) {
+                var b = bookings[j];
+                if (b.status === 'confirmed') {
+                    try {
+                        var payResp = await fetch('/api/bookings/' + b.booking_no, {
+                            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+                        });
+                        if (payResp.ok) {
+                            var payData = await payResp.json();
+                            // 在后台查询 payment 信息（通过专门的查询）
+                            // 这里简化：通过 /api/ping 暂时没法查 payment
+                            // 我们改用另一种方式，直接通过 GET booking 返回 booking 信息，payment 信息通过前端展示
+                        }
+                    } catch(e) {}
+                }
+            }
+        } catch(e) {}
+
+        body.innerHTML = bookings.map(function(b) {
+            var flight = allFlightsCache[b.flight_id];
+            var flightNo = flight ? flight.flight_no : '航班#' + b.flight_id;
+            var statusClass = b.status === 'cancelled' ? 'status-cancelled' : '';
+            var paymentBtn = '';
+            var cancelBtn = '';
+
+            if (b.status === 'confirmed') {
+                paymentBtn = '<button class="btn btn-primary btn-sm" onclick="openPay(\'' + escapeHtml(b.booking_no) + '\', ' + b.total_price + ')">💳 支付</button>';
+                cancelBtn = '<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="cancelMyOrder(\'' + escapeHtml(b.booking_no) + '\')">取消</button>';
+            }
+
+            return '<tr>' +
+                '<td><code style="font-size:12px;background:#F8FAFC;padding:3px 8px;border-radius:4px">' + escapeHtml(b.booking_no.substring(0, 8)) + '...</code></td>' +
+                '<td><strong>' + escapeHtml(flightNo) + '</strong></td>' +
+                '<td>' + escapeHtml(b.passenger_name) + '</td>' +
+                '<td>' + b.seat_count + '张</td>' +
+                '<td class="price">¥' + b.total_price.toFixed(0) + '</td>' +
+                '<td><span class="status-badge ' + (b.status === 'confirmed' ? 'status-paid' : 'status-cancelled') + '">' + (b.status === 'confirmed' ? '✅ 已确认' : '已取消') + '</span></td>' +
+                '<td>' + paymentBtn + '</td>' +
+                '<td><div class="btn-group">' + cancelBtn + '</div></td>' +
+                '</tr>';
+        }).join('');
+    }
+
+    async function cancelMyOrder(bookingNo) {
+        if (!confirm('确定要取消此订单吗？')) return;
+
+        try {
+            var resp = await fetch('/api/bookings/' + bookingNo, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+            });
+            var data = await resp.json();
+
+            if (resp.ok) {
+                showToast('订单已取消', 'success');
+                loadMyOrders();
+                searchFlights();
+            } else {
+                showToast(data.error || '取消失败', 'error');
+            }
+        } catch (err) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    // ===== 模拟支付 =====
+    function openPay(bookingNo, amount) {
+        currentPayBookingNo = bookingNo;
+        document.getElementById('payInfo').innerHTML =
+            '<div class="pay-summary">' +
+            '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:8px">支付金额</p>' +
+            '<div class="amount">¥' + amount.toFixed(0) + '</div>' +
+            '<p style="margin-top:8px;font-size:12px;color:var(--text-muted)">预订号: ' + escapeHtml(bookingNo.substring(0, 8)) + '...</p>' +
+            '</div>' +
+            '<p style="text-align:center;font-size:13px;color:var(--text-muted)">💡 模拟支付环境，点击即完成支付</p>';
+        document.getElementById('payError').textContent = '';
+        document.getElementById('payOverlay').classList.add('active');
+    }
+
+    function closePay() {
+        document.getElementById('payOverlay').classList.remove('active');
+        currentPayBookingNo = null;
+    }
+
+    async function confirmPay() {
+        var btn = document.getElementById('payConfirmBtn');
+        var errorEl = document.getElementById('payError');
+        btn.textContent = '支付中...';
+        btn.disabled = true;
+        errorEl.textContent = '';
+
+        try {
+            var resp = await fetch('/api/bookings/' + currentPayBookingNo + '/pay', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+            });
+            var data = await resp.json();
+
+            if (resp.ok) {
+                closePay();
+                showToast('✅ 支付成功！', 'success');
+                loadMyOrders();
+            } else {
+                errorEl.textContent = data.error || '支付失败';
+            }
+        } catch (err) {
+            errorEl.textContent = '网络错误，请稍后重试';
+        } finally {
+            btn.textContent = '确认支付';
+            btn.disabled = false;
+        }
+    }
+
     // ===== 工具函数 =====
     function formatTime(iso) {
         if (!iso) return '-';
@@ -281,15 +522,17 @@
     }
 
     function showToast(msg, type) {
+        var icons = { success: '✅', error: '❌', warning: '⚠️' };
+        var icon = icons[type] || '';
         var toast = document.createElement('div');
         toast.className = 'toast toast-' + (type || 'success');
-        toast.textContent = msg;
+        toast.innerHTML = '<span>' + icon + '</span> ' + msg;
         document.body.appendChild(toast);
         setTimeout(function() {
             toast.style.opacity = '0';
             toast.style.transition = 'opacity 0.3s';
             setTimeout(function() { toast.remove(); }, 300);
-        }, 2500);
+        }, 3000);
     }
 
     // 点击遮罩关闭模态框
@@ -299,12 +542,16 @@
     document.getElementById('resultOverlay').addEventListener('click', function(e) {
         if (e.target === this) closeResult();
     });
+    document.getElementById('payOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closePay();
+    });
 
     // ESC 关闭模态框
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             closeBooking();
             closeResult();
+            closePay();
         }
     });
 

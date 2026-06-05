@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS users (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
     password_hash VARCHAR(255) NOT NULL COMMENT '密码哈希',
+    role ENUM('user','admin') NOT NULL DEFAULT 'user' COMMENT '用户角色',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '注册时间'
 );
 
@@ -24,6 +25,7 @@ CREATE TABLE IF NOT EXISTS flights (
 CREATE TABLE IF NOT EXISTS bookings (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     booking_no VARCHAR(36) NOT NULL UNIQUE COMMENT '预订号（UUID）',
+    user_id BIGINT NOT NULL COMMENT '预订用户ID',
     flight_id BIGINT NOT NULL COMMENT '航班ID',
     passenger_name VARCHAR(100) NOT NULL COMMENT '乘客姓名',
     passenger_phone VARCHAR(20) NOT NULL COMMENT '乘客电话',
@@ -31,5 +33,19 @@ CREATE TABLE IF NOT EXISTS bookings (
     total_price DECIMAL(10,2) NOT NULL COMMENT '总价',
     status ENUM('confirmed','cancelled') DEFAULT 'confirmed' COMMENT '预订状态',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (flight_id) REFERENCES flights(id)
+);
+
+-- 支付表
+CREATE TABLE IF NOT EXISTS payments (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    booking_id BIGINT NOT NULL COMMENT '关联预订ID',
+    user_id BIGINT NOT NULL COMMENT '支付用户ID',
+    amount DECIMAL(10,2) NOT NULL COMMENT '支付金额',
+    status ENUM('pending','paid','refunded') DEFAULT 'pending' COMMENT '支付状态',
+    paid_at DATETIME COMMENT '支付时间',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    FOREIGN KEY (booking_id) REFERENCES bookings(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );

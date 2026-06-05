@@ -58,6 +58,7 @@ func main() {
 	// 6. 设置 Gin 路由
 	r := gin.Default()
 
+	// 前端页面
 	r.Static("/static", frontendDir)
 	r.GET("/", func(c *gin.Context) {
 		c.File(frontendDir + "/index.html")
@@ -68,12 +69,16 @@ func main() {
 	r.GET("/register", func(c *gin.Context) {
 		c.File(frontendDir + "/register.html")
 	})
+	r.GET("/admin", func(c *gin.Context) {
+		c.File(frontendDir + "/admin.html")
+	})
 
 	api := r.Group("/api")
 	{
+		// 健康检查
 		api.GET("/ping", handlers.Ping)
 
-		// 认证
+		// 认证（公开）
 		api.POST("/register", handlers.Register)
 		api.POST("/login", handlers.Login)
 
@@ -81,13 +86,40 @@ func main() {
 		api.GET("/flights", handlers.ListFlights)
 		api.GET("/flights/:id", handlers.GetFlight)
 
-		// 预订（需认证）
+		// 用户（需认证）
 		auth := api.Group("", middleware.AuthRequired())
 		{
 			auth.GET("/profile", handlers.GetProfile)
+
+			// 预订
 			auth.POST("/bookings", handlers.CreateBooking)
+			auth.GET("/bookings", handlers.ListMyBookings)
 			auth.GET("/bookings/:booking_no", handlers.GetBooking)
 			auth.DELETE("/bookings/:booking_no", handlers.CancelBooking)
+			auth.POST("/bookings/:booking_no/pay", handlers.PayBooking)
+		}
+
+		// 管理员（需认证 + 管理员权限）
+		admin := api.Group("/admin", middleware.AuthRequired(), middleware.AdminRequired())
+		{
+			// 航班管理
+			admin.GET("/flights", handlers.AdminListFlights)
+			admin.POST("/flights", handlers.AdminCreateFlight)
+			admin.PUT("/flights/:id", handlers.AdminUpdateFlight)
+			admin.DELETE("/flights/:id", handlers.AdminDeleteFlight)
+
+			// 用户管理
+			admin.GET("/users", handlers.AdminListUsers)
+			admin.PUT("/users/:id", handlers.AdminUpdateUser)
+			admin.DELETE("/users/:id", handlers.AdminDeleteUser)
+
+			// 订单管理
+			admin.GET("/bookings", handlers.AdminListBookings)
+			admin.GET("/bookings/:booking_no", handlers.AdminGetBookingDetail)
+			admin.DELETE("/bookings/:booking_no", handlers.AdminCancelBooking)
+
+			// 支付记录
+			admin.GET("/payments", handlers.AdminListPayments)
 		}
 	}
 
@@ -95,20 +127,33 @@ func main() {
 	addr := ":8080"
 	fmt.Printf("\n✈️  飞机订票系统已启动，监听 %s\n", addr)
 	fmt.Println("📋 API 端点:")
+	fmt.Println("   公开:")
 	fmt.Println("   GET    /api/ping")
 	fmt.Println("   POST   /api/register")
 	fmt.Println("   POST   /api/login")
-	fmt.Println("   GET    /api/profile        [需认证]")
 	fmt.Println("   GET    /api/flights?origin=&destination=&date=")
 	fmt.Println("   GET    /api/flights/:id")
-	fmt.Println("   POST   /api/bookings        [需认证]")
-	fmt.Println("   GET    /api/bookings/:booking_no [需认证]")
-	fmt.Println("   DELETE /api/bookings/:booking_no [需认证]")
+	fmt.Println("   用户 (需认证):")
+	fmt.Println("   GET    /api/profile")
+	fmt.Println("   POST   /api/bookings")
+	fmt.Println("   GET    /api/bookings")
+	fmt.Println("   GET    /api/bookings/:booking_no")
+	fmt.Println("   DELETE /api/bookings/:booking_no")
+	fmt.Println("   POST   /api/bookings/:booking_no/pay")
+	fmt.Println("   管理员 (需认证 + admin):")
+	fmt.Println("   GET|POST    /api/admin/flights")
+	fmt.Println("   PUT|DELETE  /api/admin/flights/:id")
+	fmt.Println("   GET         /api/admin/users")
+	fmt.Println("   PUT|DELETE  /api/admin/users/:id")
+	fmt.Println("   GET         /api/admin/bookings")
+	fmt.Println("   GET|DELETE  /api/admin/bookings/:booking_no")
+	fmt.Println("   GET         /api/admin/payments")
 	fmt.Println()
 	fmt.Println("🌐 前端页面:")
 	fmt.Println("   http://localhost:8080/         （航班主页）")
 	fmt.Println("   http://localhost:8080/login    （登录）")
 	fmt.Println("   http://localhost:8080/register （注册）")
+	fmt.Println("   http://localhost:8080/admin    （管理后台）")
 
 	if err := r.Run(addr); err != nil {
 		log.Fatalf("服务启动失败: %v", err)
