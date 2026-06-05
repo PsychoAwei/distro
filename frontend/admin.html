@@ -28,6 +28,7 @@
             <button class="tab-btn active" onclick="switchAdminTab('flights')">✈️ 航班管理</button>
             <button class="tab-btn" onclick="switchAdminTab('users')">👥 用户管理</button>
             <button class="tab-btn" onclick="switchAdminTab('bookings')">📋 订单管理</button>
+            <button class="tab-btn" onclick="switchAdminTab('cluster')">🖥️ 集群状态</button>
         </div>
 
         <!-- 统计卡片 -->
@@ -98,6 +99,13 @@
                     <tbody id="adminBookingsBody"></tbody>
                 </table>
             </div>
+        </div>
+
+        <!-- ========== 集群状态 ========== -->
+        <div class="tab-panel" id="admin-cluster">
+            <div class="cluster-diagram" id="clusterDiagram"></div>
+            <div class="cluster-stores" id="clusterStores"></div>
+            <div class="cluster-stats" id="clusterStats"></div>
         </div>
     </div>
 
@@ -194,7 +202,7 @@
     // ===== 标签页切换 =====
     function switchAdminTab(name) {
         document.querySelectorAll('.tab-btn').forEach(function(btn, i) {
-            var tabNames = ['flights', 'users', 'bookings'];
+            var tabNames = ['flights', 'users', 'bookings', 'cluster'];
             btn.classList.toggle('active', tabNames[i] === name);
         });
         document.querySelectorAll('.tab-panel').forEach(function(panel) {
@@ -205,6 +213,7 @@
         if (name === 'flights') loadAdminFlights();
         if (name === 'users') loadAdminUsers();
         if (name === 'bookings') loadAdminBookings();
+        if (name === 'cluster') loadClusterStatus();
     }
 
     // ===== 加载统计 =====
@@ -591,6 +600,207 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    }
+
+    // ========== 集群状态 ==========
+    async function loadClusterStatus() {
+        try {
+            var resp = await fetch('/api/admin/cluster', {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+            });
+            var data = await resp.json();
+
+            if (!resp.ok) {
+                document.getElementById('clusterDiagram').innerHTML =
+                    '<div class="cluster-error">⚠️ 无法获取集群状态：' + escapeHtml(data.error || '未知错误') + '</div>';
+                document.getElementById('clusterStores').innerHTML = '';
+                document.getElementById('clusterStats').innerHTML = '';
+                return;
+            }
+
+            renderClusterDiagram(data);
+            renderClusterStores(data);
+            renderClusterStats(data);
+        } catch (err) {
+            document.getElementById('clusterDiagram').innerHTML =
+                '<div class="cluster-error">⚠️ 网络错误，无法获取集群状态<br><small>请确认 PD 服务是否正常运行</small></div>';
+            document.getElementById('clusterStores').innerHTML = '';
+            document.getElementById('clusterStats').innerHTML = '';
+        }
+    }
+
+    function renderClusterDiagram(data) {
+        // 确定各组件状态
+        var pdOnline = data.pd_health;
+        var store1 = data.tikv_stores ? data.tikv_stores[0] : null;
+        var store2 = data.tikv_stores ? data.tikv_stores[1] : null;
+        var store1Up = store1 && store1.store.state_name === 'Up';
+        var store2Up = store2 && store2.store.state_name === 'Up';
+
+        var html = '';
+        html += '<div class="arch-label">🏗️ TiDB 集群拓扑</div>';
+        html += '<div class="arch-row">';
+
+        // TiDB Server
+        html += '<div class="arch-node">';
+        html += '<div class="node-icon">🖥️</div>';
+        html += '<div class="node-label">TiDB Server</div>';
+        html += '<div class="node-addr">端口 4000</div>';
+        html += '<div class="node-status"><span class="status-dot online"></span> 运行中</div>';
+        html += '</div>';
+
+        html += '<div class="arch-arrow">→</div>';
+
+        // PD
+        html += '<div class="arch-node">';
+        html += '<div class="node-icon">🧠</div>';
+        html += '<div class="node-label">PD</div>';
+        html += '<div class="node-addr">pd:2379</div>';
+        html += '<div class="node-status"><span class="status-dot ' + (pdOnline ? 'online' : 'offline') + '"></span> ' + (pdOnline ? '健康' : '异常') + '</div>';
+        html += '<div class="node-meta">' + (data.pd_node_count || 1) + ' 节点</div>';
+        html += '</div>';
+
+        html += '<div class="arch-arrow">→</div>';
+
+        // TiKV 节点组
+        html += '<div class="arch-node-group">';
+        html += '<div class="node-icon" style="font-size:24px;margin-bottom:8px">💾</div>';
+        html += '<div class="node-label" style="margin-bottom:8px">TiKV 存储节点</div>';
+
+        html += '<div class="arch-subnode">';
+        html += '<span class="status-dot ' + (store1Up ? 'online' : 'offline') + '"></span>';
+        html += '<span style="font-weight:600">TiKV-1</span>';
+        html += '<span style="font-size:11px;color:var(--text-muted);display:block">' + (store1 ? escapeHtml(store1.store.address) : '—') + '</span>';
+        html += '</div>';
+
+        html += '<div class="arch-subnode">';
+        html += '<span class="status-dot ' + (store2Up ? 'online' : 'offline') + '"></span>';
+        html += '<span style="font-weight:600">TiKV-2</span>';
+        html += '<span style="font-size:11px;color:var(--text-muted);display:block">' + (store2 ? escapeHtml(store2.store.address) : '—') + '</span>';
+        html += '</div>';
+
+        html += '</div>'; // arch-node-group
+
+        html += '</div>'; // arch-row
+
+        // Raft 说明
+        html += '<div class="arch-note">📡 数据通过 <strong>Raft 协议</strong>在 TiKV 节点间同步复制，保证强一致性</div>';
+
+        document.getElementById('clusterDiagram').innerHTML = html;
+    }
+
+    function renderClusterStores(data) {
+        var stores = data.tikv_stores || [];
+        if (stores.length === 0) {
+            document.getElementById('clusterStores').innerHTML =
+                '<div class="cluster-error">未检测到 TiKV 节点</div>';
+            return;
+        }
+
+        var html = '<div class="store-section-title">📦 TiKV 节点详情</div>';
+        html += '<div class="cluster-stores-grid">';
+
+        stores.forEach(function(s) {
+            var isUp = s.store.state_name === 'Up';
+            var stateLabel = isUp ? '在线' : '离线';
+            var stateColor = isUp ? 'var(--success)' : 'var(--danger)';
+
+            // 计算容量使用百分比
+            var capBytes = parseCapacity(s.status.capacity);
+            var availBytes = parseCapacity(s.status.available);
+            var usedBytes = capBytes - availBytes;
+            var usedPercent = capBytes > 0 ? Math.round((usedBytes / capBytes) * 100) : 0;
+            var barClass = usedPercent > 70 ? ' warning' : '';
+
+            html += '<div class="store-card">';
+            html += '<div class="store-header">';
+            html += '<div>';
+            html += '<div class="store-title">🖴 Store #' + s.store.id + '</div>';
+            html += '<div class="store-addr">' + escapeHtml(s.store.address) + '</div>';
+            html += '</div>';
+            html += '<span class="store-status" style="color:' + stateColor + '">';
+            html += '<span class="status-dot ' + (isUp ? 'online' : 'offline') + '"></span> ' + stateLabel;
+            html += '</span>';
+            html += '</div>';
+
+            // 容量条
+            html += '<div class="capacity-section">';
+            html += '<div class="capacity-labels"><span>已用 ' + formatBytes(usedBytes) + '</span><span>' + formatBytes(capBytes) + '</span></div>';
+            html += '<div class="capacity-bar-outer"><div class="capacity-bar-inner' + barClass + '" style="width:' + usedPercent + '%"></div></div>';
+            html += '<div class="capacity-percent">' + usedPercent + '% 已使用</div>';
+            html += '</div>';
+
+            // 指标
+            html += '<div class="store-metrics">';
+            html += '<div class="store-metric"><div class="metric-value">' + s.status.region_count + '</div><div class="metric-label">Region 数</div></div>';
+            html += '<div class="store-metric"><div class="metric-value">' + s.status.leader_count + '</div><div class="metric-label">Leader 数</div></div>';
+            html += '<div class="store-metric"><div class="metric-value">' + (s.store.version || '—') + '</div><div class="metric-label">版本</div></div>';
+            html += '<div class="store-metric"><div class="metric-value">' + (s.status.uptime || '—') + '</div><div class="metric-label">运行时间</div></div>';
+            html += '</div>';
+
+            html += '</div>';
+        });
+
+        html += '</div>';
+        document.getElementById('clusterStores').innerHTML = html;
+    }
+
+    function renderClusterStats(data) {
+        var stores = data.tikv_stores || [];
+        var totalLeaders = 0;
+        stores.forEach(function(s) { totalLeaders += s.status.leader_count || 0; });
+
+        document.getElementById('clusterStats').innerHTML =
+            '<div class="stats-row">' +
+            '<div class="stat-card">' +
+            '<div class="stat-icon blue">🗂️</div>' +
+            '<div><div class="stat-value">' + (data.region_count || 0) + '</div><div class="stat-label">总 Region 数</div></div>' +
+            '</div>' +
+            '<div class="stat-card">' +
+            '<div class="stat-icon green">👑</div>' +
+            '<div><div class="stat-value">' + totalLeaders + '</div><div class="stat-label">总 Leader 数</div></div>' +
+            '</div>' +
+            '<div class="stat-card">' +
+            '<div class="stat-icon ' + (data.pd_health ? 'green' : 'danger') + '">💚</div>' +
+            '<div><div class="stat-value">' + (data.pd_health ? '健康' : '异常') + '</div><div class="stat-label">PD 状态</div></div>' +
+            '</div>' +
+            '<div class="stat-card">' +
+            '<div class="stat-icon blue">💿</div>' +
+            '<div><div class="stat-value">' + formatBytes(data.total_used || 0) + ' / ' + formatBytes(data.total_capacity || 0) + '</div><div class="stat-label">集群总容量</div></div>' +
+            '</div>' +
+            '</div>';
+
+        // 如果有部分数据获取失败，显示警告
+        if (data.error) {
+            document.getElementById('clusterStats').innerHTML +=
+                '<div style="margin-top:12px;padding:8px 16px;background:#FEF3C7;border-radius:8px;font-size:13px;color:#92400E">⚠️ ' + escapeHtml(data.error) + '</div>';
+        }
+    }
+
+    // 解析容量字符串 (如 "476.4GiB", "290.8MiB") 为字节数
+    function parseCapacity(str) {
+        if (!str) return 0;
+        var num = parseFloat(str);
+        if (isNaN(num)) return 0;
+        var upper = str.toUpperCase();
+        if (upper.includes('TIB') || upper.includes('TB')) return num * 1024 * 1024 * 1024 * 1024;
+        if (upper.includes('GIB') || upper.includes('GB')) return num * 1024 * 1024 * 1024;
+        if (upper.includes('MIB') || upper.includes('MB')) return num * 1024 * 1024;
+        if (upper.includes('KIB') || upper.includes('KB')) return num * 1024;
+        return num;
+    }
+
+    // 格式化字节数为可读字符串
+    function formatBytes(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        var i = 0;
+        var size = bytes;
+        while (size >= 1024 && i < units.length - 1) {
+            size /= 1024;
+            i++;
+        }
+        return size.toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
     }
 
     function showToast(msg, type) {

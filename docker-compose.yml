@@ -112,6 +112,7 @@ services:
       - DATABASE_DSN=root:@tcp(tidb:4000)/?charset=utf8mb4&parseTime=True&loc=Local
       - FRONTEND_DIR=/frontend
       - JWT_SECRET=flight-booking-secret-key-2026
+      - PD_ADDR=http://pd:2379
     depends_on:
       - tidb
     networks:

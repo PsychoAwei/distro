@@ -9,6 +9,7 @@
 │                   浏览器                         │
 │            http://localhost:8080                 │
 │     普通用户: /          管理员: /admin          │
+│     集群状态: /admin  → 🖥️ 集群状态标签页       │
 └────────────────────┬────────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────────┐
@@ -17,6 +18,7 @@
 │    │  公开: /api/flights, /api/register    │     │
 │    │  用户: /api/bookings, /api/profile    │     │
 │    │  管理: /api/admin/flights|users|...   │     │
+│    │  集群: /api/admin/cluster (新增)      │     │
 │    │  /static/*       (前端页面)           │     │
 │    └──────────────────────────────────────┘     │
 └────────────────────┬────────────────────────────┘
@@ -42,8 +44,8 @@
 
 | 层 | 技术 | 说明 |
 |------|------|------|
-| 前端 | 原生 HTML/CSS/JS | 现代化 UI，响应式布局 |
-| 后端 | Go + Gin | REST API，JWT 认证，角色权限 |
+| 前端 | 原生 HTML/CSS/JS | 现代化 UI，响应式布局，集群拓扑可视化 |
+| 后端 | Go + Gin | REST API，JWT 认证，角色权限，PD API 代理 |
 | 数据库 | TiDB (TiKV ×2 + PD) | 分布式 SQL，兼容 MySQL |
 | 部署 | Docker Compose | 一键编排所有服务 |
 
@@ -62,6 +64,7 @@
 - 📋 查看所有订单、强制取消
 - 💰 查看支付记录
 - 📊 后台数据统计面板
+- 🖥️ **集群状态可视化（新增）** — 实时查看 TiDB 集群拓扑、TiKV 节点状态、Region 分布
 
 ### 默认账号
 | 角色 | 用户名 | 密码 |
@@ -104,8 +107,10 @@ cd Database
 
 # 或手动：
 docker-compose up -d pd tikv1 tikv2 tidb
-cd backend && go run .
+cd backend && PD_ADDR=http://127.0.0.1:2379 go run .
 ```
+
+> **注意**：本地开发模式需要手动设置 `PD_ADDR=http://127.0.0.1:2379`，因为后端不在 Docker 网络内运行。
 
 ## 📖 功能说明
 
@@ -116,7 +121,16 @@ cd backend && go run .
 | `/` | 主页：搜索航班 + 预订机票 + 我的订单 | 公开（预订需登录） |
 | `/login` | 用户登录 | 公开 |
 | `/register` | 用户注册 | 公开 |
-| `/admin` | 管理后台：航班/用户/订单管理 | 仅管理员 |
+| `/admin` | 管理后台：航班/用户/订单管理 + 🖥️ 集群状态 | 仅管理员 |
+
+### 集群状态页面（新增）
+
+管理员登录后，在管理后台点击 **🖥️ 集群状态** 标签页，可实时查看：
+
+- **架构拓扑图** — TiDB Server → PD → TiKV×2 的可视化连接关系
+- **节点状态指示灯** — 绿色在线 / 红色离线，支持故障演示
+- **TiKV 节点详情卡片** — 每个节点的容量进度条、Region 数、Leader 数、运行时间、版本
+- **集群聚合统计** — 总 Region 数、总 Leader 数、PD 健康状态、集群总容量
 
 ### API 端点
 
@@ -160,6 +174,7 @@ cd backend && go run .
 | `GET` | `/api/admin/bookings/:booking_no` | 订单详情（含支付） |
 | `DELETE` | `/api/admin/bookings/:booking_no` | 强制取消订单 |
 | `GET` | `/api/admin/payments` | 支付记录 |
+| `GET` | `/api/admin/cluster` | 🖥️ 集群状态（TiKV 节点、Region、容量） |
 
 ### 数据库表
 
@@ -176,6 +191,21 @@ cd backend && go run .
 2. 搜索航班 → 点击"预订" → 填写乘客信息
 3. 系统使用 `SELECT ... FOR UPDATE` + 事务保证座位不超卖
 4. 在"我的订单"中可查看订单、支付或取消
+
+### 集群状态数据流（新增）
+
+```
+浏览器 → GET /api/admin/cluster
+           │ (JWT 认证 + 管理员权限)
+           ▼
+       Go Handler
+           │ (并发 HTTP 请求)
+           ├── GET http://pd:2379/pd/api/v1/stores   → TiKV 节点信息
+           └── GET http://pd:2379/pd/api/v1/health   → PD 健康状态
+           │ (聚合计算)
+           ▼
+       JSON 响应 → 前端渲染架构图 + 节点卡片 + 统计面板
+```
 
 ## 🧪 课程实验建议
 
@@ -196,10 +226,12 @@ curl http://localhost:2379/pd/api/v1/stores
 
 # 2. 模拟节点故障
 docker pause tidb-tikv1
-# 观察系统是否仍可正常读写
+# 在管理后台 🖥️ 集群状态 页面观察 TiKV-1 变红（离线）
+# 尝试查询航班 → 部分 Region 不可用（演示 Raft 多数派原则）
 
 # 3. 恢复节点
 docker unpause tidb-tikv1
+# 刷新集群状态页面 → TiKV-1 恢复在线（绿色）
 
 # 4. 查看 PD 调度日志
 ./start.sh logs pd
@@ -210,7 +242,14 @@ docker unpause tidb-tikv1
 - 管理员登录 → 访问管理后台 → 可以增删改查
 - 普通用户只能操作自己的订单，管理员可以查看/取消所有订单
 
-### 实验五：性能对比
+### 实验五：集群可视化演示（新增）
+1. 管理员登录 → 管理后台 → 🖥️ 集群状态
+2. 观察架构拓扑图：TiDB → PD → TiKV×2
+3. 观察 128 个 Region 均匀分布在 2 个 TiKV 节点上
+4. 执行 `docker pause tidb-tikv1`，刷新页面观察节点状态变化
+5. 讨论：为什么 2 节点 + 3 副本不能完全容错？3+ 节点如何解决？
+
+### 实验六：性能对比
 - 对比 TiDB（2 TiKV）vs 单机 MySQL 的查询性能
 - 使用 `sysbench` 或自定义脚本压测
 
@@ -236,12 +275,11 @@ Database/
 ├── README.md                # 本文件
 ├── .gitignore
 ├── .dockerignore
-├── todo.txt                 # 需求文档
 ├── backend/
 │   ├── Dockerfile           # Go 后端容器化
 │   ├── go.mod / go.sum
 │   ├── main.go              # 入口 + 路由
-│   ├── config/config.go     # 配置（DSN、JWT密钥）
+│   ├── config/config.go     # 配置（DSN、JWT密钥、PD地址）
 │   ├── database/
 │   │   ├── db.go            # 数据库连接、建表、迁移
 │   │   └── schema.sql       # DDL（4 张表）
@@ -254,7 +292,8 @@ Database/
 │   ├── handlers/
 │   │   ├── flight.go        # 航班 API + 管理 API
 │   │   ├── booking.go       # 预订 API + 支付 API + 管理 API
-│   │   └── auth.go          # 认证 API + 用户管理 API
+│   │   ├── auth.go          # 认证 API + 用户管理 API
+│   │   └── cluster.go       # 🖥️ 集群状态 API（新增）
 │   ├── middleware/
 │   │   └── auth.go          # JWT 认证 + 管理员权限中间件
 │   └── seed/seed.go         # 示例航班 + 默认管理员
@@ -262,8 +301,8 @@ Database/
     ├── index.html           # 主页（航班搜索 + 预订 + 我的订单）
     ├── login.html           # 登录页
     ├── register.html        # 注册页
-    ├── admin.html           # 管理后台（航班/用户/订单）
-    └── style.css            # 全局现代化样式
+    ├── admin.html           # 管理后台（航班/用户/订单 + 🖥️ 集群状态）
+    └── style.css            # 全局现代化样式（含集群可视化样式）
 ```
 
 ## ⚠️ 注意事项
@@ -272,6 +311,8 @@ Database/
 2. **端口冲突**：确保 4000（TiDB）、8080（后端）、2379（PD）端口未被占用
 3. **首次启动慢**：Docker 拉取 TiDB 镜像可能需要几分钟，之后启动很快
 4. **JWT 密钥**：生产环境请修改 `JWT_SECRET` 环境变量
-5. **数据持久化**：TiDB 数据存储在 `data/` 目录，已在 `.gitignore` 中忽略
-6. **管理员账号**：首次启动自动创建 `admin / admin123`，请尽快修改密码
-7. **数据库迁移**：后端启动时自动检测并添加缺失的数据库列，兼容旧数据
+5. **PD 地址**：Docker 模式默认 `http://pd:2379`；本地开发需设 `PD_ADDR=http://127.0.0.1:2379`
+6. **数据持久化**：TiDB 数据存储在 `data/` 目录，已在 `.gitignore` 中忽略
+7. **管理员账号**：首次启动自动创建 `admin / admin123`，请尽快修改密码
+8. **数据库迁移**：后端启动时自动检测并添加缺失的数据库列，兼容旧数据
+9. **集群容错**：当前 2 TiKV + 3 副本配置下，单节点故障会导致部分数据不可用（Raft 多数派原则）；完全容错需要 ≥3 个 TiKV 节点

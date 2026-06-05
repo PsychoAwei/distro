@@ -120,6 +120,9 @@ func main() {
 
 			// 支付记录
 			admin.GET("/payments", handlers.AdminListPayments)
+
+			// 集群状态
+			admin.GET("/cluster", handlers.GetClusterStatus)
 		}
 	}
 
@@ -148,6 +151,7 @@ func main() {
 	fmt.Println("   GET         /api/admin/bookings")
 	fmt.Println("   GET|DELETE  /api/admin/bookings/:booking_no")
 	fmt.Println("   GET         /api/admin/payments")
+	fmt.Println("   GET         /api/admin/cluster")
 	fmt.Println()
 	fmt.Println("🌐 前端页面:")
 	fmt.Println("   http://localhost:8080/         （航班主页）")

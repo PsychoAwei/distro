@@ -6,6 +6,7 @@ import "os"
 type DBConfig struct {
 	DSN       string // Data Source Name，MySQL 连接串
 	JWTSecret string // JWT 签名密钥
+	PDAddr    string // Placement Driver API 地址
 }
 
 // Load 从环境变量加载配置，提供默认值
@@ -21,5 +22,10 @@ func Load() *DBConfig {
 		jwtSecret = "flight-booking-secret-key-2026"
 	}
 
-	return &DBConfig{DSN: dsn, JWTSecret: jwtSecret}
+	pdAddr := os.Getenv("PD_ADDR")
+	if pdAddr == "" {
+		pdAddr = "http://pd:2379"
+	}
+
+	return &DBConfig{DSN: dsn, JWTSecret: jwtSecret, PDAddr: pdAddr}
 }
