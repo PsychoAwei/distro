@@ -705,11 +705,8 @@
             var stateLabel = isUp ? '在线' : '离线';
             var stateColor = isUp ? 'var(--success)' : 'var(--danger)';
 
-            // 使用 PD 返回的 used_size（实际数据大小），而非 capacity - available（含系统开销）
-            var capBytes = parseCapacity(s.status.capacity);
-            var usedBytes = parseCapacity(s.status.used_size);
-            var usedPercent = capBytes > 0 ? Math.round((usedBytes / capBytes) * 100) : 0;
-            var barClass = usedPercent > 70 ? ' warning' : '';
+            var dataBytes = parseCapacity(s.status.used_size);
+            var diskBytes = parseCapacity(s.status.capacity);
 
             html += '<div class="store-card">';
             html += '<div class="store-header">';
@@ -722,11 +719,16 @@
             html += '</span>';
             html += '</div>';
 
-            // 容量条
-            html += '<div class="capacity-section">';
-            html += '<div class="capacity-labels"><span>已用 ' + formatBytes(usedBytes) + '</span><span>' + formatBytes(capBytes) + '</span></div>';
-            html += '<div class="capacity-bar-outer"><div class="capacity-bar-inner' + barClass + '" style="width:' + usedPercent + '%"></div></div>';
-            html += '<div class="capacity-percent">' + usedPercent + '% 已使用</div>';
+            // 数据大小（替换掉无意义的磁盘进度条）
+            html += '<div class="data-size-row">';
+            html += '<div class="data-size-item">';
+            html += '<span class="data-size-value">' + formatBytes(dataBytes) + '</span>';
+            html += '<span class="data-size-label">实际数据大小</span>';
+            html += '</div>';
+            html += '<div class="data-size-item">';
+            html += '<span class="data-size-value">' + formatBytes(diskBytes) + '</span>';
+            html += '<span class="data-size-label">节点磁盘容量</span>';
+            html += '</div>';
             html += '</div>';
 
             // 指标
