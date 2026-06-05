@@ -705,10 +705,9 @@
             var stateLabel = isUp ? '在线' : '离线';
             var stateColor = isUp ? 'var(--success)' : 'var(--danger)';
 
-            // 计算容量使用百分比
+            // 使用 PD 返回的 used_size（实际数据大小），而非 capacity - available（含系统开销）
             var capBytes = parseCapacity(s.status.capacity);
-            var availBytes = parseCapacity(s.status.available);
-            var usedBytes = capBytes - availBytes;
+            var usedBytes = parseCapacity(s.status.used_size);
             var usedPercent = capBytes > 0 ? Math.round((usedBytes / capBytes) * 100) : 0;
             var barClass = usedPercent > 70 ? ' warning' : '';
 
