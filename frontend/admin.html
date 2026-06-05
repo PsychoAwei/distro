@@ -708,6 +708,11 @@
             var dataBytes = parseCapacity(s.status.used_size);
             var diskBytes = parseCapacity(s.status.capacity);
 
+            // 计算 Region 分布（该节点 Region 占总数百分比）
+            var totalRegions = 0;
+            stores.forEach(function(x) { totalRegions += x.status.region_count || 0; });
+            var regionPercent = totalRegions > 0 ? Math.round((s.status.region_count / totalRegions) * 100) : 0;
+
             html += '<div class="store-card">';
             html += '<div class="store-header">';
             html += '<div>';
@@ -719,21 +724,20 @@
             html += '</span>';
             html += '</div>';
 
-            // 数据大小（替换掉无意义的磁盘进度条）
-            html += '<div class="data-size-row">';
-            html += '<div class="data-size-item">';
-            html += '<span class="data-size-value">' + formatBytes(dataBytes) + '</span>';
-            html += '<span class="data-size-label">实际数据大小</span>';
+            // Region 分布进度条
+            html += '<div class="capacity-section">';
+            html += '<div class="capacity-labels"><span>📊 Region 分布</span><span>' + s.status.region_count + ' / ' + totalRegions + '</span></div>';
+            html += '<div class="capacity-bar-outer"><div class="capacity-bar-inner" style="width:' + regionPercent + '%"></div></div>';
             html += '</div>';
-            html += '<div class="data-size-item">';
-            html += '<span class="data-size-value">' + formatBytes(diskBytes) + '</span>';
-            html += '<span class="data-size-label">节点磁盘容量</span>';
-            html += '</div>';
+
+            // 数据大小 + 磁盘
+            html += '<div class="capacity-labels" style="margin-top:10px">';
+            html += '<span>💾 数据 ' + formatBytes(dataBytes) + '</span>';
+            html += '<span>💿 磁盘 ' + formatBytes(diskBytes) + '</span>';
             html += '</div>';
 
             // 指标
             html += '<div class="store-metrics">';
-            html += '<div class="store-metric"><div class="metric-value">' + s.status.region_count + '</div><div class="metric-label">Region 数</div></div>';
             html += '<div class="store-metric"><div class="metric-value">' + s.status.leader_count + '</div><div class="metric-label">Leader 数</div></div>';
             html += '<div class="store-metric"><div class="metric-value">' + (s.store.version || '—') + '</div><div class="metric-label">版本</div></div>';
             html += '<div class="store-metric"><div class="metric-value">' + (s.status.uptime || '—') + '</div><div class="metric-label">运行时间</div></div>';
