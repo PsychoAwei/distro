@@ -87,7 +87,7 @@ start_dev() {
     cd "$PROJECT_DIR"
 
     log_step "启动 TiDB 集群（不含后端容器）..."
-    docker-compose up -d pd tikv1 tikv2 tidb
+    docker-compose up -d pd tikv1 tikv2 tikv3 tikv4 tidb
 
     log_info "等待 TiDB 端口开放..."
     for i in $(seq 1 60); do
@@ -181,9 +181,9 @@ reset_data() {
     log_step "清理本地数据目录..."
     if [ -d data/pd ]; then
         # 尝试直接删除，如果权限不足则用 docker 临时容器删除
-        rm -rf data/pd data/tikv1 data/tikv2 2>/dev/null || \
-            docker run --rm -v "$PROJECT_DIR/data:/data" alpine rm -rf /data/pd /data/tikv1 /data/tikv2 2>/dev/null || \
-            { log_warn "无法自动清理 data/ 目录 (需 root 权限)，请手动: sudo rm -rf data/pd data/tikv1 data/tikv2"; }
+        rm -rf data/pd data/tikv1 data/tikv2 data/tikv3 data/tikv4 2>/dev/null || \
+            docker run --rm -v "$PROJECT_DIR/data:/data" alpine rm -rf /data/pd /data/tikv1 /data/tikv2 /data/tikv3 /data/tikv4 2>/dev/null || \
+            { log_warn "无法自动清理 data/ 目录 (需 root 权限)，请手动: sudo rm -rf data/pd data/tikv1 data/tikv2 data/tikv3 data/tikv4"; }
     fi
 
     log_info "数据已重置"

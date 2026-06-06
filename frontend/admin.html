@@ -629,13 +629,42 @@
         }
     }
 
+    // 故障模拟：发送 pause/unpause 请求
+    async function simulateFault(address, action) {
+        var label = action === 'pause' ? '暂停' : '恢复';
+        if (!confirm('确认要' + label + '节点 ' + address + '？\n\n' +
+            (action === 'pause' ? '节点将变为离线状态，数据不可读写。' : '节点将重新上线并自动同步数据。'))) {
+            return;
+        }
+        try {
+            var resp = await fetch('/api/admin/cluster/simulate-' + (action === 'pause' ? 'failure' : 'recover'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + localStorage.getItem('token')
+                },
+                body: JSON.stringify({ address: address })
+            });
+            var result = await resp.json();
+            if (result.success) {
+                alert('✅ ' + result.message);
+                // 等待 PD 检测到变化后刷新
+                document.getElementById('clusterDiagram').innerHTML =
+                    '<div class="cluster-pending">⏳ 等待 PD 检测节点变化（约 5 秒）...</div>';
+                document.getElementById('clusterStores').innerHTML = '';
+                document.getElementById('clusterStats').innerHTML = '';
+                setTimeout(function() { loadClusterStatus(); }, 5000);
+            } else {
+                alert('❌ 操作失败：' + (result.message || result.error || '未知错误'));
+            }
+        } catch (err) {
+            alert('❌ 网络错误：' + err.message);
+        }
+    }
+
     function renderClusterDiagram(data) {
-        // 确定各组件状态
         var pdOnline = data.pd_health;
-        var store1 = data.tikv_stores ? data.tikv_stores[0] : null;
-        var store2 = data.tikv_stores ? data.tikv_stores[1] : null;
-        var store1Up = store1 && store1.store.state_name === 'Up';
-        var store2Up = store2 && store2.store.state_name === 'Up';
+        var stores = data.tikv_stores || [];
 
         var html = '';
         html += '<div class="arch-label">🏗️ TiDB 集群拓扑</div>';
@@ -662,29 +691,36 @@
 
         html += '<div class="arch-arrow">→</div>';
 
-        // TiKV 节点组
+        // TiKV 节点组（动态循环）
         html += '<div class="arch-node-group">';
         html += '<div class="node-icon" style="font-size:24px;margin-bottom:8px">💾</div>';
         html += '<div class="node-label" style="margin-bottom:8px">TiKV 存储节点</div>';
 
-        html += '<div class="arch-subnode">';
-        html += '<span class="status-dot ' + (store1Up ? 'online' : 'offline') + '"></span>';
-        html += '<span style="font-weight:600">TiKV-1</span>';
-        html += '<span style="font-size:11px;color:var(--text-muted);display:block">' + (store1 ? escapeHtml(store1.store.address) : '—') + '</span>';
-        html += '</div>';
-
-        html += '<div class="arch-subnode">';
-        html += '<span class="status-dot ' + (store2Up ? 'online' : 'offline') + '"></span>';
-        html += '<span style="font-weight:600">TiKV-2</span>';
-        html += '<span style="font-size:11px;color:var(--text-muted);display:block">' + (store2 ? escapeHtml(store2.store.address) : '—') + '</span>';
-        html += '</div>';
+        if (stores.length === 0) {
+            html += '<div class="arch-subnode"><span style="color:var(--text-muted)">未检测到节点</span></div>';
+        } else {
+            stores.forEach(function(s, i) {
+                var isUp = s.store.state_name === 'Up';
+                html += '<div class="arch-subnode">';
+                html += '<span class="status-dot ' + (isUp ? 'online' : 'offline') + '"></span>';
+                html += '<span style="font-weight:600">TiKV-' + (i + 1) + '</span>';
+                html += '<span style="font-size:11px;color:var(--text-muted);display:block">' + escapeHtml(s.store.address) + '</span>';
+                // 故障模拟按钮
+                if (isUp) {
+                    html += '<button class="btn-fault-sim" title="模拟该节点故障" onclick="event.stopPropagation();simulateFault(\'' + escapeHtml(s.store.address) + '\',\'pause\')">⏸️ 模拟故障</button>';
+                } else {
+                    html += '<button class="btn-fault-sim recover" title="恢复该节点" onclick="event.stopPropagation();simulateFault(\'' + escapeHtml(s.store.address) + '\',\'unpause\')">▶️ 恢复</button>';
+                }
+                html += '</div>';
+            });
+        }
 
         html += '</div>'; // arch-node-group
 
         html += '</div>'; // arch-row
 
         // Raft 说明
-        html += '<div class="arch-note">📡 数据通过 <strong>Raft 协议</strong>在 TiKV 节点间同步复制，保证强一致性</div>';
+        html += '<div class="arch-note">📡 数据通过 <strong>Raft 协议</strong>在 ' + stores.length + ' 个 TiKV 节点间同步复制，保证强一致性</div>';
 
         document.getElementById('clusterDiagram').innerHTML = html;
     }
@@ -722,6 +758,12 @@
             html += '<span class="store-status" style="color:' + stateColor + '">';
             html += '<span class="status-dot ' + (isUp ? 'online' : 'offline') + '"></span> ' + stateLabel;
             html += '</span>';
+            // 故障模拟按钮
+            if (isUp) {
+                html += '<button class="btn-fault-sim" onclick="event.stopPropagation();simulateFault(\'' + escapeHtml(s.store.address) + '\',\'pause\')">⏸️ 模拟故障</button>';
+            } else {
+                html += '<button class="btn-fault-sim recover" onclick="event.stopPropagation();simulateFault(\'' + escapeHtml(s.store.address) + '\',\'unpause\')">▶️ 恢复</button>';
+            }
             html += '</div>';
 
             // Region 分布进度条

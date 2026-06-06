@@ -123,6 +123,10 @@ func main() {
 
 			// 集群状态
 			admin.GET("/cluster", handlers.GetClusterStatus)
+
+			// 故障模拟（演示用）
+			admin.POST("/cluster/simulate-failure", handlers.SimulateFailure)
+			admin.POST("/cluster/simulate-recover", handlers.SimulateRecover)
 		}
 	}
 

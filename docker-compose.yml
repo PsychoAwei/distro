@@ -1,6 +1,6 @@
 # ===========================================
 # 飞机订票系统 — 分布式数据库课程作业
-# 基于 TiDB (PD + TiKV ×2 + TiDB Server) + Go 后端
+# 基于 TiDB (PD + TiKV ×4 + TiDB Server) + Go 后端
 #
 # 启动: docker-compose up -d
 # 访问: http://localhost:8080
@@ -14,6 +14,8 @@ volumes:
   pd-data:
   tikv1-data:
   tikv2-data:
+  tikv3-data:
+  tikv4-data:
 
 services:
   # 1. Placement Driver (PD) - 集群调度中心
@@ -78,7 +80,49 @@ services:
         limits:
           memory: 1024M
 
-  # 4. TiDB Server - SQL 入口
+  # 4. TiKV 节点3 - 第三个存储节点（容错关键）
+  tikv3:
+    image: pingcap/tikv:latest
+    container_name: tidb-tikv3
+    volumes:
+      - ./data/tikv3:/data
+    command:
+      - --addr=0.0.0.0:20160
+      - --advertise-addr=tikv3:20160
+      - --data-dir=/data/tikv3
+      - --pd=pd:2379
+    depends_on:
+      - pd
+    networks:
+      - tidb-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  # 5. TiKV 节点4 - 第四个存储节点（额外缓冲）
+  tikv4:
+    image: pingcap/tikv:latest
+    container_name: tidb-tikv4
+    volumes:
+      - ./data/tikv4:/data
+    command:
+      - --addr=0.0.0.0:20160
+      - --advertise-addr=tikv4:20160
+      - --data-dir=/data/tikv4
+      - --pd=pd:2379
+    depends_on:
+      - pd
+    networks:
+      - tidb-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  # 6. TiDB Server - SQL 入口
   tidb:
     image: pingcap/tidb:latest
     container_name: tidb-server
@@ -92,6 +136,8 @@ services:
     depends_on:
       - tikv1
       - tikv2
+      - tikv3
+      - tikv4
     networks:
       - tidb-net
     restart: on-failure
@@ -100,7 +146,7 @@ services:
         limits:
           memory: 512M
 
-  # 5. Go 后端 - REST API + 前端页面
+  # 7. Go 后端 - REST API + 前端页面
   backend:
     build:
       context: .
@@ -115,6 +161,8 @@ services:
       - PD_ADDR=http://pd:2379
     depends_on:
       - tidb
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - tidb-net
     restart: on-failure

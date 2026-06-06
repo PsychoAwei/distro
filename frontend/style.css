@@ -1106,6 +1106,47 @@ tbody tr:last-child td { border-bottom: none; }
     font-size: 12px;
 }
 
+/* 故障模拟按钮 */
+.btn-fault-sim {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 8px;
+    font-size: 11px;
+    border: 1px solid var(--danger);
+    border-radius: 4px;
+    background: #FFF5F5;
+    color: var(--danger);
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+.btn-fault-sim:hover {
+    background: var(--danger);
+    color: #fff;
+}
+.btn-fault-sim.recover {
+    border-color: var(--success);
+    background: #F0FFF4;
+    color: var(--success);
+}
+.btn-fault-sim.recover:hover {
+    background: var(--success);
+    color: #fff;
+}
+
+/* 故障模拟等待提示 */
+.cluster-pending {
+    text-align: center;
+    padding: 20px;
+    color: var(--text-muted);
+    font-size: 14px;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
 .stat-icon.danger { background: #FEE2E2; }
 
 /* ===== 响应式 ===== */

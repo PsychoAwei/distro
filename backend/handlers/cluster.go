@@ -1,10 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -229,4 +233,135 @@ func joinStrings(ss []string, sep string) string {
 		result += sep + ss[i]
 	}
 	return result
+}
+
+// ============================================
+// 故障模拟请求/响应
+// ============================================
+
+// SimulateRequest 故障模拟请求
+type SimulateRequest struct {
+	Address string `json:"address"` // 如 "tikv1:20160"
+}
+
+// SimulateResponse 故障模拟响应
+type SimulateResponse struct {
+	Success      bool   `json:"success"`
+	Action       string `json:"action"`        // "pause" 或 "unpause"
+	Container    string `json:"container"`     // 容器名
+	StoreAddress string `json:"store_address"` // 原始地址
+	Message      string `json:"message,omitempty"`
+}
+
+// containerName 从 store address 推导容器名：tikv1:20160 → tidb-tikv1
+func containerName(address string) string {
+	host := address
+	if idx := strings.Index(host, ":"); idx >= 0 {
+		host = host[:idx]
+	}
+	return "tidb-" + host
+}
+
+// dockerClient 通过 Unix Socket 连接 Docker API
+var dockerClient *http.Client
+
+func init() {
+	dockerClient = &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, "unix", "/var/run/docker.sock")
+			},
+		},
+	}
+}
+
+// dockerExec 调用 Docker Engine API 执行 pause/unpause
+func dockerExec(container, action string) error {
+	resp, err := dockerClient.Post(
+		"http://localhost/containers/"+container+"/"+action,
+		"application/json",
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("docker api 连接失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("docker api 返回 %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// SimulateFailure 模拟 TiKV 节点故障（docker pause）
+func SimulateFailure(c *gin.Context) {
+	var req SimulateRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.Address == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供有效的 store address (如 tikv1:20160)"})
+		return
+	}
+
+	cname := containerName(req.Address)
+
+	// 白名单：只允许操作 TiKV 容器
+	if !strings.HasPrefix(cname, "tidb-tikv") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持操作 TiKV 节点容器"})
+		return
+	}
+
+	if err := dockerExec(cname, "pause"); err != nil {
+		c.JSON(http.StatusInternalServerError, SimulateResponse{
+			Success:      false,
+			Action:       "pause",
+			Container:    cname,
+			StoreAddress: req.Address,
+			Message:      err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, SimulateResponse{
+		Success:      true,
+		Action:       "pause",
+		Container:    cname,
+		StoreAddress: req.Address,
+		Message:      fmt.Sprintf("已暂停 %s，PD 将在约 10 秒后检测到节点离线", cname),
+	})
+}
+
+// SimulateRecover 恢复 TiKV 节点（docker unpause）
+func SimulateRecover(c *gin.Context) {
+	var req SimulateRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.Address == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供有效的 store address (如 tikv1:20160)"})
+		return
+	}
+
+	cname := containerName(req.Address)
+
+	// 白名单：只允许操作 TiKV 容器
+	if !strings.HasPrefix(cname, "tidb-tikv") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持操作 TiKV 节点容器"})
+		return
+	}
+
+	if err := dockerExec(cname, "unpause"); err != nil {
+		c.JSON(http.StatusInternalServerError, SimulateResponse{
+			Success:      false,
+			Action:       "unpause",
+			Container:    cname,
+			StoreAddress: req.Address,
+			Message:      err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, SimulateResponse{
+		Success:      true,
+		Action:       "unpause",
+		Container:    cname,
+		StoreAddress: req.Address,
+		Message:      fmt.Sprintf("已恢复 %s，PD 将在约 10 秒后检测到节点重新上线", cname),
+	})
 }
