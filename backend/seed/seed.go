@@ -1,6 +1,7 @@
 package seed
 
 import (
+	"fmt"
 	"log"
 
 	"flight-booking/database"
@@ -12,7 +13,9 @@ import (
 func Run() error {
 	// 1. 检查是否已有默认管理员
 	var adminCount int
-	database.DB.QueryRow("SELECT COUNT(*) FROM users WHERE username = 'admin'").Scan(&adminCount)
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM users WHERE username = 'admin'").Scan(&adminCount); err != nil {
+		return fmt.Errorf("检查管理员账号失败: %w", err)
+	}
 	if adminCount == 0 {
 		hash, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
 		if err != nil {
@@ -30,7 +33,9 @@ func Run() error {
 
 	// 2. 检查是否已存在航班数据
 	var count int
-	database.DB.QueryRow("SELECT COUNT(*) FROM flights").Scan(&count)
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM flights").Scan(&count); err != nil {
+		return fmt.Errorf("检查航班数据失败: %w", err)
+	}
 	if count > 0 {
 		log.Printf("✓ 已有 %d 条航班数据，跳过种子数据插入\n", count)
 		return nil
